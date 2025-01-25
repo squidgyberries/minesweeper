@@ -8,46 +8,18 @@
 #include <raylib.h>
 #include <raymath.h>
 
-// Display flags
-const uint8_t closed_flag = 0x10;  // 0b00010000
-const uint8_t flagged_flag = 0x20; // 0b00100000
-const uint8_t mine_flag = 0x40;    // 0b01000000
-const uint8_t mistake_flag = 0x80; // 0b10000000
-const uint8_t number_mask = 0x0F;  // 0b00001111
+const uint8_t number_mask = 0x0F; // 0b00001111
 
-static inline bool isOpen(uint8_t cell) {
-  return !(bool)(cell &
-                 (closed_flag | flagged_flag | mine_flag | mistake_flag));
-}
+const uint8_t cell_display_state_open = 0;
+const uint8_t cell_display_state_closed = 1;
+const uint8_t cell_display_state_flagged = 2;
+const uint8_t cell_display_state_mine = 3;
+const uint8_t cell_display_state_mistake = 4;
+const uint8_t cell_display_state_press = 5;
+static inline uint8_t getDisplayState(uint8_t cell) { return cell >> 4; }
 
-static inline uint8_t setOpen(uint8_t cell) { return cell & number_mask; }
-
-static inline bool isClosed(uint8_t cell) { return (bool)(cell & closed_flag); }
-
-static inline uint8_t setClosed(uint8_t cell) {
-  return setOpen(cell) | closed_flag;
-}
-
-static inline bool isFlagged(uint8_t cell) {
-  return (bool)(cell & flagged_flag);
-}
-
-static inline uint8_t setFlagged(uint8_t cell) {
-  return setOpen(cell) | flagged_flag;
-}
-
-static inline bool isMine(uint8_t cell) { return (bool)(cell & mine_flag); }
-
-static inline uint8_t setMine(uint8_t cell) {
-  return setOpen(cell) | mine_flag;
-}
-
-static inline bool isMistake(uint8_t cell) {
-  return (bool)(cell & mistake_flag);
-}
-
-static inline uint8_t setMistake(uint8_t cell) {
-  return setOpen(cell) | mistake_flag;
+static inline uint8_t setDisplayState(uint8_t cell, uint8_t state) {
+  return (cell & number_mask) | (state << 4);
 }
 
 static inline uint8_t getNumber(uint8_t cell) { return cell & number_mask; }
@@ -102,7 +74,7 @@ int main(void) {
       x = randint(9);
       y = randint(9);
     } while (getNumber(board[y][x]) == 9);
-    board[y][x] = 9 | closed_flag;
+    board[y][x] = setDisplayState(9, cell_display_state_closed);
   }
   for (int y = 0; y < 9; ++y) {
     for (int x = 0; x < 9; ++x) {
@@ -126,7 +98,7 @@ int main(void) {
                           (!top_edge && getNumber(board[y - 1][x]) == 9) +
                           (!bottom_edge && getNumber(board[y + 1][x]) == 9);
       // clang-format on
-      board[y][x] = neighbors | closed_flag;
+      board[y][x] = setDisplayState(neighbors, cell_display_state_closed);
     }
   }
 
@@ -142,9 +114,9 @@ int main(void) {
                                                  top_left.y + y * 20.0f + 2.0f,
                                                  16.0f, 16.0f})) {
             if (getNumber(board[y][x]) != 9) {
-              board[y][x] = setOpen(board[y][x]);
+              board[y][x] = setDisplayState(board[y][x], cell_display_state_open);
             } else {
-              board[y][x] = setMistake(board[y][x]);
+              board[y][x] = setDisplayState(board[y][x], cell_display_state_mistake);
             }
           }
         }
@@ -157,10 +129,10 @@ int main(void) {
                                      (Rectangle){top_left.x + x * 20.0f + 2.0f,
                                                  top_left.y + y * 20.0f + 2.0f,
                                                  16.0f, 16.0f})) {
-            if (!isFlagged(board[y][x])) {
-              board[y][x] = setFlagged(board[y][x]);
+            if (getDisplayState(board[y][x]) != cell_display_state_flagged) {
+              board[y][x] = setDisplayState(board[y][x], cell_display_state_flagged);
             } else {
-              board[y][x] = setClosed(board[y][x]);
+              board[y][x] = setDisplayState(board[y][x], cell_display_state_closed);
             }
           }
         }
@@ -173,33 +145,57 @@ int main(void) {
 
     for (int y = 0; y < 9; ++y) {
       for (int x = 0; x < 9; ++x) {
-        if (isClosed(board[y][x])) {
+        if (getDisplayState(board[y][x]) == cell_display_state_closed) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, BLACK);
-        } else if (isOpen(board[y][x])) {
+        } else if (getDisplayState(board[y][x]) == cell_display_state_open) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, LIGHTGRAY);
           if (getNumber(board[y][x]) != 0) {
             char str[2];
             sprintf(str, "%u", getNumber(board[y][x]));
+            Color color = BLUE;
+            switch (getNumber(board[y][x])) {
+              case 2:
+                color = GREEN;
+                break;
+              case 3:
+                color = RED;
+                break;
+              case 4:
+                color = DARKBLUE;
+                break;
+              case 5:
+                color = MAROON;
+                break;
+              case 6:
+                color = SKYBLUE;
+                break;
+              case 7:
+                color = BLACK;
+                break;
+              case 8:
+                color = GRAY;
+                break;
+            }
             DrawText(str, top_left.x + x * 20.0f + 5,
-                     top_left.y + y * 20.0f + 2, 20, BLUE);
+                     top_left.y + y * 20.0f + 2, 20, color);
           }
-        } else if (isFlagged(board[y][x])) {
+        } else if (getDisplayState(board[y][x]) == cell_display_state_flagged) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, BLACK);
           DrawText("F", top_left.x + x * 20.0f + 5, top_left.y + y * 20.0f + 2,
                    20, RED);
-        } else if (isMistake(board[y][x])) {
+        } else if (getDisplayState(board[y][x]) == cell_display_state_mistake) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, RED);
           DrawText("M", top_left.x + x * 20.0f + 5, top_left.y + y * 20.0f + 2,
                    20, BLACK);
-        } else if (isMine(board[y][x])) {
+        } else if (getDisplayState(board[y][x]) == cell_display_state_mine) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, LIGHTGRAY);
