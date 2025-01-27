@@ -29,9 +29,76 @@ int randint(int n) {
   int limit = RAND_MAX - (RAND_MAX % n);
 
   int r;
-  while ((r = rand()) >= limit);
+  while ((r = rand()) >= limit)
+    ;
 
   return r % n;
+}
+
+bool findCollisionCell(Vector2 mouse_pos, Vector2 top_left, int *out_x,
+                       int *out_y) {
+  for (int x = 0; x < 9; ++x) {
+    for (int y = 0; y < 9; ++y) {
+      Rectangle cell_rect = {top_left.x + x * 20.0f + 2.0f,
+                             top_left.y + y * 20.0f + 2.0f, 16.0f, 16.0f};
+      if (CheckCollisionPointRec(mouse_pos, cell_rect)) {
+        *out_x = x;
+        *out_y = y;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static inline void openCellIfClosed(uint8_t board[9][9], int x, int y);
+
+void openCell(uint8_t board[9][9], int x, int y) {
+  if (getNumber(board[y][x]) != 9) {
+    board[y][x] = setDisplayState(board[y][x], cell_display_state_open);
+  } else {
+    board[y][x] = setDisplayState(board[y][x], cell_display_state_mistake);
+  }
+  if (getNumber(board[y][x]) == 0) {
+    if (x > 0) {
+      openCellIfClosed(board, x - 1, y);
+      if (y > 0) {
+        openCellIfClosed(board, x - 1, y - 1);
+      }
+      if (y < 8) {
+        openCellIfClosed(board, x - 1, y + 1);
+      }
+    }
+    if (x < 8) {
+      openCellIfClosed(board, x + 1, y);
+      if (y > 0) {
+        openCellIfClosed(board, x + 1, y - 1);
+      }
+      if (y < 8) {
+        openCellIfClosed(board, x + 1, y + 1);
+      }
+    }
+    if (y > 0) {
+      openCellIfClosed(board, x, y - 1);
+    }
+    if (y < 8) {
+      openCellIfClosed(board, x, y + 1);
+    }
+  }
+}
+
+static inline void openCellIfClosed(uint8_t board[9][9], int x, int y) {
+  if (getDisplayState(board[y][x]) == cell_display_state_closed) {
+    openCell(board, x, y);
+  }
+}
+
+void toggleFlagged(uint8_t board[9][9], int x, int y) {
+  if (getDisplayState(board[y][x]) != cell_display_state_flagged) {
+    board[y][x] = setDisplayState(board[y][x], cell_display_state_flagged);
+  } else {
+    board[y][x] = setDisplayState(board[y][x], cell_display_state_closed);
+  }
 }
 
 int main(void) {
@@ -104,35 +171,15 @@ int main(void) {
 
     Vector2 mouse_pos = GetMousePosition();
     if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-      for (int y = 0; y < 9; ++y) {
-        for (int x = 0; x < 9; ++x) {
-          if (CheckCollisionPointRec(mouse_pos,
-                                     (Rectangle){top_left.x + x * 20.0f + 2.0f,
-                                                 top_left.y + y * 20.0f + 2.0f,
-                                                 16.0f, 16.0f})) {
-            if (getNumber(board[y][x]) != 9) {
-              board[y][x] = setDisplayState(board[y][x], cell_display_state_open);
-            } else {
-              board[y][x] = setDisplayState(board[y][x], cell_display_state_mistake);
-            }
-          }
-        }
+      int x, y;
+      if (findCollisionCell(mouse_pos, top_left, &x, &y)) {
+        openCell(board, x, y);
       }
     }
     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-      for (int y = 0; y < 9; ++y) {
-        for (int x = 0; x < 9; ++x) {
-          if (CheckCollisionPointRec(mouse_pos,
-                                     (Rectangle){top_left.x + x * 20.0f + 2.0f,
-                                                 top_left.y + y * 20.0f + 2.0f,
-                                                 16.0f, 16.0f})) {
-            if (getDisplayState(board[y][x]) != cell_display_state_flagged) {
-              board[y][x] = setDisplayState(board[y][x], cell_display_state_flagged);
-            } else {
-              board[y][x] = setDisplayState(board[y][x], cell_display_state_closed);
-            }
-          }
-        }
+      int x, y;
+      if (findCollisionCell(mouse_pos, top_left, &x, &y)) {
+        toggleFlagged(board, x, y);
       }
     }
 
@@ -155,27 +202,27 @@ int main(void) {
             sprintf(str, "%u", getNumber(board[y][x]));
             Color color = BLUE;
             switch (getNumber(board[y][x])) {
-              case 2:
-                color = GREEN;
-                break;
-              case 3:
-                color = RED;
-                break;
-              case 4:
-                color = DARKBLUE;
-                break;
-              case 5:
-                color = MAROON;
-                break;
-              case 6:
-                color = SKYBLUE;
-                break;
-              case 7:
-                color = BLACK;
-                break;
-              case 8:
-                color = GRAY;
-                break;
+            case 2:
+              color = GREEN;
+              break;
+            case 3:
+              color = RED;
+              break;
+            case 4:
+              color = DARKBLUE;
+              break;
+            case 5:
+              color = MAROON;
+              break;
+            case 6:
+              color = SKYBLUE;
+              break;
+            case 7:
+              color = BLACK;
+              break;
+            case 8:
+              color = GRAY;
+              break;
             }
             DrawText(str, top_left.x + x * 20.0f + 5,
                      top_left.y + y * 20.0f + 2, 20, color);
