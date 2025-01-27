@@ -8,6 +8,9 @@
 #include <raylib.h>
 #include <raymath.h>
 
+const Color number_colors[] = {LIGHTGRAY, BLUE,    GREEN, RED, DARKBLUE,
+                               MAROON,    SKYBLUE, BLACK, GRAY};
+
 const uint8_t number_mask = 0x0F; // 0b00001111
 
 const uint8_t cell_display_state_open = 0;
@@ -189,57 +192,36 @@ int main(void) {
 
     for (int y = 0; y < 9; ++y) {
       for (int x = 0; x < 9; ++x) {
-        if (getDisplayState(board[y][x]) == cell_display_state_closed) {
+        uint8_t cell_number = getNumber(board[y][x]);
+        uint8_t cell_display_state = getDisplayState(board[y][x]);
+        if (cell_display_state == cell_display_state_closed) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, BLACK);
-        } else if (getDisplayState(board[y][x]) == cell_display_state_open) {
+        } else if (cell_display_state == cell_display_state_open) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, LIGHTGRAY);
-          if (getNumber(board[y][x]) != 0) {
+          if (cell_number != 0) {
             char str[2];
-            sprintf(str, "%u", getNumber(board[y][x]));
-            Color color = BLUE;
-            switch (getNumber(board[y][x])) {
-            case 2:
-              color = GREEN;
-              break;
-            case 3:
-              color = RED;
-              break;
-            case 4:
-              color = DARKBLUE;
-              break;
-            case 5:
-              color = MAROON;
-              break;
-            case 6:
-              color = SKYBLUE;
-              break;
-            case 7:
-              color = BLACK;
-              break;
-            case 8:
-              color = GRAY;
-              break;
-            }
+            sprintf(str, "%u", cell_number);
             DrawText(str, top_left.x + x * 20.0f + 5,
-                     top_left.y + y * 20.0f + 2, 20, color);
+                     top_left.y + y * 20.0f + 2, 20,
+                     number_colors[cell_number]);
           }
-        } else if (getDisplayState(board[y][x]) == cell_display_state_flagged) {
+        } else if (cell_display_state == cell_display_state_flagged) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, BLACK);
           DrawText("F", top_left.x + x * 20.0f + 5, top_left.y + y * 20.0f + 2,
                    20, RED);
-        } else if (getDisplayState(board[y][x]) == cell_display_state_mistake) {
+        } else if (cell_display_state == cell_display_state_mistake) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, RED);
           DrawText("M", top_left.x + x * 20.0f + 5, top_left.y + y * 20.0f + 2,
                    20, BLACK);
-        } else if (getDisplayState(board[y][x]) == cell_display_state_mine) {
+        } else if (cell_display_state == cell_display_state_mine) {
           DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
                                                         y * 20.0f + 2.0f}),
                          (Vector2){16.0f, 16.0f}, LIGHTGRAY);
