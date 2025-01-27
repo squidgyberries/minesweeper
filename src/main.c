@@ -26,22 +26,12 @@ static inline uint8_t getNumber(uint8_t cell) { return cell & number_mask; }
 
 // [0, n)
 int randint(int n) {
-  --n;
-  if (n == RAND_MAX) {
-    return rand();
-  } else {
-    assert(n <= RAND_MAX);
+  int limit = RAND_MAX - (RAND_MAX % n);
 
-    int end = RAND_MAX / n;
-    assert(end > 0);
-    end *= n;
+  int r;
+  while ((r = rand()) >= limit);
 
-    int r;
-    while ((r = rand()) >= end)
-      ;
-
-    return r % n;
-  }
+  return r % n;
 }
 
 int main(void) {
@@ -67,14 +57,21 @@ int main(void) {
 
   srand(time(NULL));
 
+  // Generate board
   uint8_t board[9][9] = {0};
+  int available_cells = 9 * 9;
   for (int i = 0; i < 10; ++i) {
-    int x, y;
-    do {
-      x = randint(9);
-      y = randint(9);
-    } while (getNumber(board[y][x]) == 9);
-    board[y][x] = setDisplayState(9, cell_display_state_closed);
+    int num = randint(available_cells);
+    for (int y = 0; y < 9; ++y) {
+      for (int x = 0; x < 9; ++x) {
+        if (getNumber(board[y][x]) != 9) {
+          if (num-- == 0) {
+            board[y][x] = setDisplayState(9, cell_display_state_closed);
+          }
+        }
+      }
+    }
+    --available_cells;
   }
   for (int y = 0; y < 9; ++y) {
     for (int x = 0; x < 9; ++x) {
