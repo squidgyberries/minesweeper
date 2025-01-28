@@ -11,6 +11,10 @@
 const Color number_colors[] = {LIGHTGRAY, BLUE,    GREEN, RED, DARKBLUE,
                                MAROON,    SKYBLUE, BLACK, GRAY};
 
+const int board_width = 16;
+const int board_height = 16;
+const int num_mines = 40;
+
 const uint8_t number_mask = 0x0F; // 0b00001111
 
 const uint8_t cell_display_state_open = 0;
@@ -40,8 +44,8 @@ int randint(int n) {
 
 bool findCollisionCell(Vector2 mouse_pos, Vector2 top_left, int *out_x,
                        int *out_y) {
-  for (int x = 0; x < 9; ++x) {
-    for (int y = 0; y < 9; ++y) {
+  for (int x = 0; x < board_width; ++x) {
+    for (int y = 0; y < board_height; ++y) {
       Rectangle cell_rect = {top_left.x + x * 20.0f + 2.0f,
                              top_left.y + y * 20.0f + 2.0f, 16.0f, 16.0f};
       if (CheckCollisionPointRec(mouse_pos, cell_rect)) {
@@ -54,9 +58,9 @@ bool findCollisionCell(Vector2 mouse_pos, Vector2 top_left, int *out_x,
   return false;
 }
 
-static inline void openCellIfClosed(uint8_t board[9][9], int x, int y);
+static inline void openCellIfClosed(uint8_t board[board_height][board_width], int x, int y);
 
-void openCell(uint8_t board[9][9], int x, int y) {
+void openCell(uint8_t board[board_height][board_width], int x, int y) {
   if (getNumber(board[y][x]) != 9) {
     board[y][x] = setDisplayState(board[y][x], cell_display_state_open);
   } else {
@@ -68,35 +72,35 @@ void openCell(uint8_t board[9][9], int x, int y) {
       if (y > 0) {
         openCellIfClosed(board, x - 1, y - 1);
       }
-      if (y < 8) {
+      if (y < (board_height - 1)) {
         openCellIfClosed(board, x - 1, y + 1);
       }
     }
-    if (x < 8) {
+    if (x < (board_width - 1)) {
       openCellIfClosed(board, x + 1, y);
       if (y > 0) {
         openCellIfClosed(board, x + 1, y - 1);
       }
-      if (y < 8) {
+      if (y < (board_height - 1)) {
         openCellIfClosed(board, x + 1, y + 1);
       }
     }
     if (y > 0) {
       openCellIfClosed(board, x, y - 1);
     }
-    if (y < 8) {
+    if (y < (board_height - 1)) {
       openCellIfClosed(board, x, y + 1);
     }
   }
 }
 
-static inline void openCellIfClosed(uint8_t board[9][9], int x, int y) {
+static inline void openCellIfClosed(uint8_t board[board_height][board_width], int x, int y) {
   if (getDisplayState(board[y][x]) == cell_display_state_closed) {
     openCell(board, x, y);
   }
 }
 
-void toggleFlagged(uint8_t board[9][9], int x, int y) {
+void toggleFlagged(uint8_t board[board_height][board_width], int x, int y) {
   if (getDisplayState(board[y][x]) != cell_display_state_flagged) {
     board[y][x] = setDisplayState(board[y][x], cell_display_state_flagged);
   } else {
@@ -123,17 +127,22 @@ int main(void) {
   recalculated FLAG_WINDOW_ALWAYS_RUN FLAG_MSAA_4X_HINT
   */
   SetConfigFlags(FLAG_VSYNC_HINT);
-  InitWindow(220, 220, "minesweeper");
+  InitWindow(40 + board_width * 20, 40 + board_height * 20, "minesweeper");
 
   srand(time(NULL));
 
   // Generate board
-  uint8_t board[9][9] = {0};
-  int available_cells = 9 * 9;
-  for (int i = 0; i < 10; ++i) {
+  // clang-format off
+  // uint8_t (*board)[board_width] = calloc(1, sizeof(uint8_t[board_height][board_width]));
+  // uint8_t (*board)[board_width] = calloc(1, sizeof(uint8_t * board_width * board_height));
+  // uint8_t (*board)[board_width] = calloc(board_height, sizeof(*board));
+  // clang-format on
+  uint8_t (*board)[board_width] = calloc(board_width * board_height, sizeof(uint8_t));
+  int available_cells = board_width * board_height;
+  for (int i = 0; i < num_mines; ++i) {
     int num = randint(available_cells);
-    for (int y = 0; y < 9; ++y) {
-      for (int x = 0; x < 9; ++x) {
+    for (int y = 0; y < board_height; ++y) {
+      for (int x = 0; x < board_width; ++x) {
         if (getNumber(board[y][x]) != 9) {
           if (num-- == 0) {
             board[y][x] = setDisplayState(9, cell_display_state_closed);
@@ -143,16 +152,15 @@ int main(void) {
     }
     --available_cells;
   }
-  for (int y = 0; y < 9; ++y) {
-    for (int x = 0; x < 9; ++x) {
+  for (int y = 0; y < board_height; ++y) {
+    for (int x = 0; x < board_width; ++x) {
       if (getNumber(board[y][x]) == 9) {
         continue;
       }
       bool left_edge = x == 0;
-      bool right_edge = x == 8;
+      bool right_edge = x == (board_width - 1);
       bool top_edge = y == 0;
-      bool bottom_edge = y == 8;
-      // printf("%u%u%u%u\n", left_edge, right_edge, top_edge, bottom_edge);
+      bool bottom_edge = y == (board_height - 1);
       // clang-format off
       uint8_t neighbors = (!left_edge && !top_edge && getNumber(board[y - 1][x - 1]) == 9) +
                           (!left_edge && getNumber(board[y][x - 1]) == 9) +
@@ -190,8 +198,8 @@ int main(void) {
 
     ClearBackground(WHITE);
 
-    for (int y = 0; y < 9; ++y) {
-      for (int x = 0; x < 9; ++x) {
+    for (int y = 0; y < board_height; ++y) {
+      for (int x = 0; x < board_width; ++x) {
         uint8_t cell_number = getNumber(board[y][x]);
         uint8_t cell_display_state = getDisplayState(board[y][x]);
         if (cell_display_state == cell_display_state_closed) {
@@ -235,6 +243,8 @@ int main(void) {
   }
 
   CloseWindow();
+
+  free(board);
 
   return 0;
 }
