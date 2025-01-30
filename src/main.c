@@ -11,9 +11,9 @@
 const Color number_colors[] = {LIGHTGRAY, BLUE,    GREEN, RED, DARKBLUE,
                                MAROON,    SKYBLUE, BLACK, GRAY};
 
-const int board_width = 16;
-const int board_height = 16;
-const int num_mines = 40;
+const int board_width = 9;
+const int board_height = 9;
+const int num_mines = 10;
 
 const uint8_t number_mask = 0x0F; // 0b00001111
 
@@ -55,6 +55,8 @@ bool findCollisionCell(Vector2 mouse_pos, Vector2 top_left, int *out_x,
       }
     }
   }
+  *out_x = -1;
+  *out_y = -1;
   return false;
 }
 
@@ -177,20 +179,34 @@ int main(void) {
     }
   }
 
+  int last_press_x = 0;
+  int last_press_y = 0;
   while (!WindowShouldClose()) {
     Vector2 top_left = (Vector2){20.0f, 20.0f};
 
     Vector2 mouse_pos = GetMousePosition();
+    int mouse_cell_x, mouse_cell_y;
+    bool mouse_is_on_cell = findCollisionCell(mouse_pos, top_left, &mouse_cell_x, &mouse_cell_y);
+    if (getDisplayState(board[last_press_y][last_press_x]) == cell_display_state_press) {
+      board[last_press_y][last_press_x] = setDisplayState(board[last_press_y][last_press_x], cell_display_state_closed);
+    }
+    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+      if (mouse_is_on_cell && getDisplayState(board[mouse_cell_y][mouse_cell_x]) == cell_display_state_closed) {
+        board[mouse_cell_y][mouse_cell_x] = setDisplayState(board[mouse_cell_y][mouse_cell_x], cell_display_state_press);
+        last_press_x = mouse_cell_x;
+        last_press_y = mouse_cell_y;
+      }
+    }
     if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-      int x, y;
-      if (findCollisionCell(mouse_pos, top_left, &x, &y)) {
-        openCell(board, x, y);
+      if (mouse_is_on_cell) {
+        openCell(board, mouse_cell_x, mouse_cell_y);
       }
     }
     if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-      int x, y;
-      if (findCollisionCell(mouse_pos, top_left, &x, &y)) {
-        toggleFlagged(board, x, y);
+      if (mouse_is_on_cell) {
+        if (getDisplayState(board[mouse_cell_y][mouse_cell_x]) == cell_display_state_closed) {
+          toggleFlagged(board, mouse_cell_x, mouse_cell_y);
+        }
       }
     }
 
@@ -235,6 +251,10 @@ int main(void) {
                          (Vector2){16.0f, 16.0f}, LIGHTGRAY);
           DrawText("M", top_left.x + x * 20.0f + 5, top_left.y + y * 20.0f + 2,
                    20, BLACK);
+        } else if (cell_display_state == cell_display_state_press) {
+          DrawRectangleV(Vector2Add(top_left, (Vector2){x * 20.0f + 2.0f,
+                                                        y * 20.0f + 2.0f}),
+                         (Vector2){16.0f, 16.0f}, LIGHTGRAY);
         }
       }
     }
