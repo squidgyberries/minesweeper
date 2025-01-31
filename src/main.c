@@ -10,9 +10,9 @@
 
 const Color number_colors[] = {LIGHTGRAY, BLUE, GREEN, RED, DARKBLUE, MAROON, SKYBLUE, BLACK, GRAY};
 
-const int board_width = 16;
-const int board_height = 16;
-const int num_mines = 40;
+const int board_width = 10;
+const int board_height = 10;
+int num_mines = 91;
 
 const uint8_t number_mask = 0x0F; // 0b00001111
 
@@ -63,29 +63,33 @@ void openCell(uint8_t board[board_height][board_width], int x, int y) {
   } else {
     board[y][x] = setDisplayState(board[y][x], cell_display_state_mistake);
   }
+  bool left_edge = x == 0;
+  bool right_edge = x == (board_width - 1);
+  bool top_edge = y == 0;
+  bool bottom_edge = y == (board_height - 1);
   if (getNumber(board[y][x]) == 0) {
-    if (x > 0) {
+    if (!left_edge) {
       openCellIfClosed(board, x - 1, y);
-      if (y > 0) {
+      if (!top_edge) {
         openCellIfClosed(board, x - 1, y - 1);
       }
-      if (y < (board_height - 1)) {
+      if (!bottom_edge) {
         openCellIfClosed(board, x - 1, y + 1);
       }
     }
-    if (x < (board_width - 1)) {
+    if (!right_edge) {
       openCellIfClosed(board, x + 1, y);
-      if (y > 0) {
+      if (!top_edge) {
         openCellIfClosed(board, x + 1, y - 1);
       }
-      if (y < (board_height - 1)) {
+      if (!bottom_edge) {
         openCellIfClosed(board, x + 1, y + 1);
       }
     }
-    if (y > 0) {
+    if (!top_edge) {
       openCellIfClosed(board, x, y - 1);
     }
-    if (y < (board_height - 1)) {
+    if (!bottom_edge) {
       openCellIfClosed(board, x, y + 1);
     }
   }
@@ -107,22 +111,65 @@ void toggleFlagged(uint8_t board[board_height][board_width], int x, int y) {
 
 void generateMines(uint8_t board[board_height][board_width], int start_x, int start_y) {
   board[start_y][start_x] = setDisplayState(10, cell_display_state_closed);
+
+  if (num_mines > board_width * board_height - 1) {
+    num_mines = board_width * board_height - 1;
+  }
+
+  int available_start_neighbors = (board_width * board_height - 1) - num_mines;
   bool start_left_edge = start_x == 0;
   bool start_right_edge = start_x == (board_width - 1);
   bool start_top_edge = start_y == 0;
   bool start_bottom_edge = start_y == (board_height - 1);
-  // clang-format off
-  int start_neighbors = (!start_left_edge && !start_top_edge && (board[start_y - 1][start_x - 1] = setDisplayState(10, cell_display_state_closed))) +
-                        (!start_left_edge && (board[start_y][start_x - 1] = setDisplayState(10, cell_display_state_closed))) +
-                        (!start_left_edge && !start_bottom_edge && (board[start_y + 1][start_x - 1] = setDisplayState(10, cell_display_state_closed))) +
-
-                        (!start_right_edge && !start_top_edge && (board[start_y - 1][start_x + 1] = setDisplayState(10, cell_display_state_closed))) +
-                        (!start_right_edge && (board[start_y][start_x + 1] = setDisplayState(10, cell_display_state_closed))) +
-                        (!start_right_edge && !start_bottom_edge && (board[start_y + 1][start_x + 1] = setDisplayState(10, cell_display_state_closed))) +
-
-                        (!start_top_edge && (board[start_y - 1][start_x] = setDisplayState(10, cell_display_state_closed))) +
-                        (!start_bottom_edge && (board[start_y + 1][start_x] = setDisplayState(10, cell_display_state_closed)));
-  // clang-format on
+  int start_neighbors = 0;
+  if (!start_top_edge) {
+    if (!start_left_edge) {
+      if (available_start_neighbors-- > 0) {
+        board[start_y - 1][start_x - 1] = setDisplayState(10, cell_display_state_closed);
+        ++start_neighbors;
+      }
+    }
+    if (available_start_neighbors-- > 0) {
+      board[start_y - 1][start_x] = setDisplayState(10, cell_display_state_closed);
+      ++start_neighbors;
+    }
+    if (!start_right_edge) {
+      if (available_start_neighbors-- > 0) {
+        board[start_y - 1][start_x + 1] = setDisplayState(10, cell_display_state_closed);
+        ++start_neighbors;
+      }
+    }
+  }
+  if (!start_left_edge) {
+    if (available_start_neighbors-- > 0) {
+      board[start_y][start_x - 1] = setDisplayState(10, cell_display_state_closed);
+      ++start_neighbors;
+    }
+  }
+  if (!start_right_edge) {
+    if (available_start_neighbors-- > 0) {
+      board[start_y][start_x + 1] = setDisplayState(10, cell_display_state_closed);
+      ++start_neighbors;
+    }
+  }
+  if (!start_bottom_edge) {
+    if (!start_left_edge) {
+      if (available_start_neighbors-- > 0) {
+        board[start_y + 1][start_x - 1] = setDisplayState(10, cell_display_state_closed);
+        ++start_neighbors;
+      }
+    }
+    if (available_start_neighbors-- > 0) {
+      board[start_y + 1][start_x] = setDisplayState(10, cell_display_state_closed);
+      ++start_neighbors;
+    }
+    if (!start_right_edge) {
+      if (available_start_neighbors-- > 0) {
+        board[start_y + 1][start_x + 1] = setDisplayState(10, cell_display_state_closed);
+        ++start_neighbors;
+      }
+    }
+  }
 
   int available_cells = board_width * board_height - (1 + start_neighbors);
   for (int i = 0; i < num_mines; ++i) {
