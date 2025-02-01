@@ -15,6 +15,11 @@ const int board_height = 9;
 int num_mines = 10;
 int mines_left = 10;
 
+uint32_t timer = 0;
+bool timer_started = false;
+double timer_start = 0.0;
+bool game_over = false;
+
 const uint8_t number_mask = 0x0F; // 0b00001111
 
 const uint8_t cell_display_state_closed = 0;
@@ -57,53 +62,50 @@ bool findCollisionCell(Vector2 mouse_pos, Vector2 top_left, int *out_x, int *out
   return false;
 }
 
-static inline void openCellIfClosed(uint8_t board[board_height][board_width], int x, int y);
-
-void openCell(uint8_t board[board_height][board_width], int x, int y) {
-  if (getDisplayState(board[y][x]) == cell_display_state_flagged) {
-    return;
+// -1: mistake
+// 0: successful
+// 1: didn't open
+int openCell(uint8_t board[board_height][board_width], int x, int y) {
+  if (getDisplayState(board[y][x]) != cell_display_state_closed) {
+    return 1;
   }
-  if (getNumber(board[y][x]) != 9) {
-    board[y][x] = setDisplayState(board[y][x], cell_display_state_open);
-  } else {
+  if (getNumber(board[y][x]) == 9) {
     board[y][x] = setDisplayState(board[y][x], cell_display_state_mistake);
+    return -1;
   }
+
+  board[y][x] = setDisplayState(board[y][x], cell_display_state_open);
   const bool left_edge = x == 0;
   const bool right_edge = x == (board_width - 1);
   const bool top_edge = y == 0;
   const bool bottom_edge = y == (board_height - 1);
   if (getNumber(board[y][x]) == 0) {
     if (!left_edge) {
-      openCellIfClosed(board, x - 1, y);
+      openCell(board, x - 1, y);
       if (!top_edge) {
-        openCellIfClosed(board, x - 1, y - 1);
+        openCell(board, x - 1, y - 1);
       }
       if (!bottom_edge) {
-        openCellIfClosed(board, x - 1, y + 1);
+        openCell(board, x - 1, y + 1);
       }
     }
     if (!right_edge) {
-      openCellIfClosed(board, x + 1, y);
+      openCell(board, x + 1, y);
       if (!top_edge) {
-        openCellIfClosed(board, x + 1, y - 1);
+        openCell(board, x + 1, y - 1);
       }
       if (!bottom_edge) {
-        openCellIfClosed(board, x + 1, y + 1);
+        openCell(board, x + 1, y + 1);
       }
     }
     if (!top_edge) {
-      openCellIfClosed(board, x, y - 1);
+      openCell(board, x, y - 1);
     }
     if (!bottom_edge) {
-      openCellIfClosed(board, x, y + 1);
+      openCell(board, x, y + 1);
     }
   }
-}
-
-static inline void openCellIfClosed(uint8_t board[board_height][board_width], int x, int y) {
-  if (getDisplayState(board[y][x]) == cell_display_state_closed) {
-    openCell(board, x, y);
-  }
+  return 0;
 }
 
 void toggleFlagged(uint8_t board[board_height][board_width], int x, int y) {
@@ -219,9 +221,26 @@ void generateMines(uint8_t board[board_height][board_width], int start_x, int st
   }
 }
 
+void revealMines(uint8_t board[board_height][board_width]) {
+  for (int y = 0; y < board_height; ++y) {
+    for (int x = 0; x < board_width; ++x) {
+      const uint8_t display_state = getDisplayState(board[y][x]);
+      const uint8_t number = getNumber(board[y][x]);
+      if (number == 9 && display_state != cell_display_state_mistake && display_state != cell_display_state_flagged) {
+        board[y][x] = setDisplayState(number, cell_display_state_mine);
+      }
+      if (display_state == cell_display_state_flagged && number != 9) {
+        board[y][x] = setDisplayState(number, cell_display_state_flag_mistake);
+      }
+    }
+  }
+}
+
 int main(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);
-  InitWindow(40 + board_width * 20, 100 + board_height * 20, "minesweeper");
+  int window_width = 40 + board_width * 20;
+  int window_height = 90 + board_height * 20;
+  InitWindow(window_width, window_height, "minesweeper");
 
   srand(time(NULL));
 
@@ -240,36 +259,54 @@ int main(void) {
   bool is_first_open = true;
   int last_press_x = 0;
   int last_press_y = 0;
+
+  int mines_text_length = snprintf(NULL, 0, "%d", mines_left) + 1;
+  char *mines_text = malloc(sizeof(char) * mines_text_length);
+  snprintf(mines_text, mines_text_length, "%d", mines_left);
+  int timer_text_length = snprintf(NULL, 0, "%u", timer) + 1;
+  char *timer_text = malloc(sizeof(char) * timer_text_length);
+  snprintf(timer_text, timer_text_length, "%u", timer);
   while (!WindowShouldClose()) {
-    Vector2 top_left = (Vector2){20.0f, 80.0f};
+    Vector2 top_left = (Vector2){20.0f, 70.0f};
 
     Vector2 mouse_pos = GetMousePosition();
-    int mouse_cell_x, mouse_cell_y;
-    const bool mouse_is_on_cell = findCollisionCell(mouse_pos, top_left, &mouse_cell_x, &mouse_cell_y);
-    const uint8_t mouse_display_state = getDisplayState(board[mouse_cell_y][mouse_cell_x]);
-    if (getDisplayState(board[last_press_y][last_press_x]) == cell_display_state_press) {
-      board[last_press_y][last_press_x] = setDisplayState(board[last_press_y][last_press_x], cell_display_state_closed);
-    }
-    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
-      if (mouse_is_on_cell && mouse_display_state == cell_display_state_closed) {
-        board[mouse_cell_y][mouse_cell_x] = setDisplayState(board[mouse_cell_y][mouse_cell_x], cell_display_state_press);
-        last_press_x = mouse_cell_x;
-        last_press_y = mouse_cell_y;
+
+    if (!game_over) {
+      int mouse_cell_x, mouse_cell_y;
+      const bool mouse_is_on_cell = findCollisionCell(mouse_pos, top_left, &mouse_cell_x, &mouse_cell_y);
+      const uint8_t mouse_display_state = getDisplayState(board[mouse_cell_y][mouse_cell_x]);
+      if (getDisplayState(board[last_press_y][last_press_x]) == cell_display_state_press) {
+        board[last_press_y][last_press_x] = setDisplayState(board[last_press_y][last_press_x], cell_display_state_closed);
       }
-    }
-    if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
-      if (mouse_is_on_cell) {
-        if (is_first_open) {
-          generateMines(board, mouse_cell_x, mouse_cell_y);
-          is_first_open = false;
+      if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        if (mouse_is_on_cell && mouse_display_state == cell_display_state_closed) {
+          board[mouse_cell_y][mouse_cell_x] = setDisplayState(board[mouse_cell_y][mouse_cell_x], cell_display_state_press);
+          last_press_x = mouse_cell_x;
+          last_press_y = mouse_cell_y;
         }
-        openCell(board, mouse_cell_x, mouse_cell_y);
       }
-    }
-    if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
-      if (mouse_is_on_cell) {
-        if (mouse_display_state == cell_display_state_closed || mouse_display_state == cell_display_state_flagged) {
-          toggleFlagged(board, mouse_cell_x, mouse_cell_y);
+      if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+        if (mouse_is_on_cell) {
+          if (is_first_open) {
+            generateMines(board, mouse_cell_x, mouse_cell_y);
+            is_first_open = false;
+            timer_started = true;
+            timer_start = GetTime();
+          }
+          int open_result = openCell(board, mouse_cell_x, mouse_cell_y);
+          if (open_result == -1) {
+            // GAME OVER
+            timer_started = false;
+            game_over = true;
+            revealMines(board);
+          }
+        }
+      }
+      if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+        if (mouse_is_on_cell) {
+          if (mouse_display_state == cell_display_state_closed || mouse_display_state == cell_display_state_flagged) {
+            toggleFlagged(board, mouse_cell_x, mouse_cell_y);
+          }
         }
       }
     }
@@ -291,7 +328,7 @@ int main(void) {
           DrawRectangleV(cell_top_left, cell_size, LIGHTGRAY);
           if (cell_number != 0) {
             char str[2];
-            sprintf(str, "%u", cell_number);
+            snprintf(str, 2, "%u", cell_number);
             DrawText(str, cell_top_left.x + 4, cell_top_left.y, 20, number_colors[cell_number]);
           }
         } else if (cell_display_state == cell_display_state_flagged) {
@@ -313,14 +350,31 @@ int main(void) {
     }
 
     // Draw UI
-    char mines_left_str[10];
-    sprintf(mines_left_str, "%d", mines_left);
-    DrawText(mines_left_str, 20, 20, 40, BLACK);
+    int new_length;
+    if ((new_length = snprintf(NULL, 0, "%d", mines_left) + 1) > mines_text_length) {
+      mines_text_length = new_length;
+      mines_text = realloc(mines_text, sizeof(char) * mines_text_length);
+    }
+    snprintf(mines_text, mines_text_length, "%d", mines_left);
+    DrawText(mines_text, 20, 20, 30, BLACK);
+
+    if (timer_started) {
+      timer = (int)(GetTime() - timer_start);
+    }
+    if ((new_length = snprintf(NULL, 0, "%u", timer) + 1) > timer_text_length) {
+      timer_text_length = new_length;
+      timer_text = realloc(timer_text, sizeof(char) * timer_text_length);
+    }
+    snprintf(timer_text, timer_text_length, "%u", timer);
+    DrawText(timer_text, window_width - 20 - MeasureText(timer_text, 30), 20, 30, BLACK);
 
     EndDrawing();
   }
 
   CloseWindow();
+
+  free(mines_text);
+  free(timer_text);
 
   free(board);
 
