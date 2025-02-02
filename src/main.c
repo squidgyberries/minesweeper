@@ -9,6 +9,8 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define BOARD(x,y) (board[(y) * board_height + (x)])
+
 const Color number_colors[] = {LIGHTGRAY, BLUE, GREEN, RED, DARKBLUE, MAROON, SKYBLUE, BLACK, GRAY};
 
 const int board_width = 9;
@@ -67,21 +69,21 @@ bool findCollisionCell(Vector2 mouse_pos, Vector2 top_left, int *out_x, int *out
 // -1: mistake
 // 0: successful
 // 1: didn't open
-int openCell(uint8_t board[board_height][board_width], int x, int y) {
-  if (getDisplayState(board[y][x]) != cell_display_state_closed) {
+int openCell(uint8_t *board, int x, int y) {
+  if (getDisplayState(BOARD(x, y)) != cell_display_state_closed) {
     return 1;
   }
-  if (getNumber(board[y][x]) == 9) {
-    board[y][x] = setDisplayState(board[y][x], cell_display_state_mistake);
+  if (getNumber(BOARD(x, y)) == 9) {
+    BOARD(x, y) = setDisplayState(BOARD(x, y), cell_display_state_mistake);
     return -1;
   }
 
-  board[y][x] = setDisplayState(board[y][x], cell_display_state_open);
+  BOARD(x, y) = setDisplayState(BOARD(x, y), cell_display_state_open);
   const bool left_edge = x == 0;
   const bool right_edge = x == (board_width - 1);
   const bool top_edge = y == 0;
   const bool bottom_edge = y == (board_height - 1);
-  if (getNumber(board[y][x]) == 0) {
+  if (getNumber(BOARD(x, y)) == 0) {
     if (!left_edge) {
       openCell(board, x - 1, y);
       if (!top_edge) {
@@ -110,22 +112,18 @@ int openCell(uint8_t board[board_height][board_width], int x, int y) {
   return 0;
 }
 
-void toggleFlagged(uint8_t board[board_height][board_width], int x, int y) {
-  if (getDisplayState(board[y][x]) != cell_display_state_flagged) {
-    board[y][x] = setDisplayState(board[y][x], cell_display_state_flagged);
+void toggleFlagged(uint8_t *board, int x, int y) {
+  if (getDisplayState(BOARD(x, y)) != cell_display_state_flagged) {
+    BOARD(x, y) = setDisplayState(BOARD(x, y), cell_display_state_flagged);
     --mines_left;
   } else {
-    board[y][x] = setDisplayState(board[y][x], cell_display_state_closed);
+    BOARD(x, y) = setDisplayState(BOARD(x, y), cell_display_state_closed);
     ++mines_left;
   }
 }
 
-void generateMines(uint8_t board[board_height][board_width], int start_x, int start_y) {
-  board[start_y][start_x] = setDisplayState(10, cell_display_state_closed);
-
-  // if (num_mines > board_width * board_height - 1) {
-  //   num_mines = board_width * board_height - 1;
-  // }
+void generateMines(uint8_t *board, int start_x, int start_y) {
+  BOARD(start_x, start_y) = setDisplayState(10, cell_display_state_closed);
 
   int available_start_neighbors = (board_width * board_height - 1) - num_mines;
   const bool start_left_edge = start_x == 0;
@@ -137,47 +135,47 @@ void generateMines(uint8_t board[board_height][board_width], int start_x, int st
   if (!start_top_edge) {
     if (!start_left_edge) {
       if (available_start_neighbors-- > 0) {
-        board[start_y - 1][start_x - 1] = setDisplayState(10, getDisplayState(board[start_y - 1][start_x - 1]));
+        BOARD(start_x - 1, start_y - 1) = setDisplayState(10, getDisplayState(BOARD(start_x - 1, start_y - 1)));
         ++start_neighbors;
       }
     }
     if (available_start_neighbors-- > 0) {
-      board[start_y - 1][start_x] = setDisplayState(10, getDisplayState(board[start_y - 1][start_x]));
+      BOARD(start_x, start_y - 1) = setDisplayState(10, getDisplayState(BOARD(start_x, start_y - 1)));
       ++start_neighbors;
     }
     if (!start_right_edge) {
       if (available_start_neighbors-- > 0) {
-        board[start_y - 1][start_x + 1] = setDisplayState(10, getDisplayState(board[start_y - 1][start_x + 1]));
+        BOARD(start_x + 1, start_y - 1) = setDisplayState(10, getDisplayState(BOARD(start_x + 1, start_y - 1)));
         ++start_neighbors;
       }
     }
   }
   if (!start_left_edge) {
     if (available_start_neighbors-- > 0) {
-      board[start_y][start_x - 1] = setDisplayState(10, getDisplayState(board[start_y][start_x - 1]));
+      BOARD(start_x - 1, start_y) = setDisplayState(10, getDisplayState(BOARD(start_x - 1, start_y)));
       ++start_neighbors;
     }
   }
   if (!start_right_edge) {
     if (available_start_neighbors-- > 0) {
-      board[start_y][start_x + 1] = setDisplayState(10, getDisplayState(board[start_y][start_x + 1]));
+      BOARD(start_x + 1, start_y) = setDisplayState(10, getDisplayState(BOARD(start_x + 1, start_y)));
       ++start_neighbors;
     }
   }
   if (!start_bottom_edge) {
     if (!start_left_edge) {
       if (available_start_neighbors-- > 0) {
-        board[start_y + 1][start_x - 1] = setDisplayState(10, getDisplayState(board[start_y + 1][start_x - 1]));
+        BOARD(start_x - 1, start_y + 1) = setDisplayState(10, getDisplayState(BOARD(start_x - 1, start_y + 1)));
         ++start_neighbors;
       }
     }
     if (available_start_neighbors-- > 0) {
-      board[start_y + 1][start_x] = setDisplayState(10, getDisplayState(board[start_y + 1][start_x]));
+      BOARD(start_x, start_y + 1) = setDisplayState(10, getDisplayState(BOARD(start_x, start_y + 1)));
       ++start_neighbors;
     }
     if (!start_right_edge) {
       if (available_start_neighbors-- > 0) {
-        board[start_y + 1][start_x + 1] = setDisplayState(10, getDisplayState(board[start_y + 1][start_x + 1]));
+        BOARD(start_x + 1, start_y + 1) = setDisplayState(10, getDisplayState(BOARD(start_x + 1, start_y + 1)));
         ++start_neighbors;
       }
     }
@@ -188,9 +186,9 @@ void generateMines(uint8_t board[board_height][board_width], int start_x, int st
     int num = randint(available_cells);
     for (int y = 0; y < board_height; ++y) {
       for (int x = 0; x < board_width; ++x) {
-        if (getNumber(board[y][x]) == 0) {
+        if (getNumber(BOARD(x, y)) == 0) {
           if (num-- == 0) {
-            board[y][x] = setDisplayState(9, getDisplayState(board[y][x]));
+            BOARD(x, y) = setDisplayState(9, getDisplayState(BOARD(x, y)));
           }
         }
       }
@@ -199,7 +197,7 @@ void generateMines(uint8_t board[board_height][board_width], int start_x, int st
   }
   for (int y = 0; y < board_height; ++y) {
     for (int x = 0; x < board_width; ++x) {
-      if (getNumber(board[y][x]) == 9) {
+      if (getNumber(BOARD(x, y)) == 9) {
         continue;
       }
       const bool left_edge = x == 0;
@@ -207,51 +205,51 @@ void generateMines(uint8_t board[board_height][board_width], int start_x, int st
       const bool top_edge = y == 0;
       const bool bottom_edge = y == (board_height - 1);
       // clang-format off
-      const uint8_t neighbors = (!left_edge && !top_edge && getNumber(board[y - 1][x - 1]) == 9) +
-                                (!left_edge && getNumber(board[y][x - 1]) == 9) +
-                                (!left_edge && !bottom_edge && getNumber(board[y + 1][x - 1]) == 9) +
+      const uint8_t neighbors = (!left_edge && !top_edge && getNumber(BOARD(x - 1, y - 1)) == 9) +
+                                (!left_edge && getNumber(BOARD(x - 1, y)) == 9) +
+                                (!left_edge && !bottom_edge && getNumber(BOARD(x - 1, y + 1)) == 9) +
 
-                                (!right_edge && !top_edge && getNumber(board[y - 1][x + 1]) == 9) +
-                                (!right_edge && getNumber(board[y][x + 1]) == 9) +
-                                (!right_edge && !bottom_edge && getNumber(board[y + 1][x + 1]) == 9) +
+                                (!right_edge && !top_edge && getNumber(BOARD(x + 1, y - 1)) == 9) +
+                                (!right_edge && getNumber(BOARD(x + 1, y)) == 9) +
+                                (!right_edge && !bottom_edge && getNumber(BOARD(x + 1, y + 1)) == 9) +
 
-                                (!top_edge && getNumber(board[y - 1][x]) == 9) +
-                                (!bottom_edge && getNumber(board[y + 1][x]) == 9);
+                                (!top_edge && getNumber(BOARD(x, y - 1)) == 9) +
+                                (!bottom_edge && getNumber(BOARD(x, y + 1)) == 9);
       // clang-format on
-      board[y][x] = setDisplayState(neighbors, getDisplayState(board[y][x]));
+      BOARD(x, y) = setDisplayState(neighbors, getDisplayState(BOARD(x, y)));
     }
   }
 }
 
-void revealMines(uint8_t board[board_height][board_width]) {
+void revealMines(uint8_t *board) {
   for (int y = 0; y < board_height; ++y) {
     for (int x = 0; x < board_width; ++x) {
-      const uint8_t display_state = getDisplayState(board[y][x]);
-      const uint8_t number = getNumber(board[y][x]);
+      const uint8_t display_state = getDisplayState(BOARD(x, y));
+      const uint8_t number = getNumber(BOARD(x, y));
       if (number == 9 && display_state != cell_display_state_mistake && display_state != cell_display_state_flagged) {
-        board[y][x] = setDisplayState(number, cell_display_state_mine);
+        BOARD(x, y) = setDisplayState(number, cell_display_state_mine);
       }
       if (display_state == cell_display_state_flagged && number != 9) {
-        board[y][x] = setDisplayState(number, cell_display_state_flag_mistake);
+        BOARD(x, y) = setDisplayState(number, cell_display_state_flag_mistake);
       }
     }
   }
 }
 
-void revealFlags(uint8_t board[board_height][board_width]) {
+void revealFlags(uint8_t *board) {
   for (int y = 0; y < board_height; ++y) {
     for (int x = 0; x < board_width; ++x) {
-      if (getNumber(board[y][x]) == 9 && getDisplayState(board[y][x]) != cell_display_state_flagged) {
-        board[y][x] = setDisplayState(board[y][x], cell_display_state_flagged);
+      if (getNumber(BOARD(x, y)) == 9 && getDisplayState(BOARD(x, y)) != cell_display_state_flagged) {
+        BOARD(x, y) = setDisplayState(BOARD(x, y), cell_display_state_flagged);
       }
     }
   }
 }
 
-bool checkWin(uint8_t board[board_height][board_width]) {
+bool checkWin(uint8_t *board) {
   for (int y = 0; y < board_height; ++y) {
     for (int x = 0; x < board_width; ++x) {
-      if (getNumber(board[y][x]) != 9 && getDisplayState(board[y][x]) != cell_display_state_open) {
+      if (getNumber(BOARD(x, y)) != 9 && getDisplayState(BOARD(x, y)) != cell_display_state_open) {
         return false;
       }
     }
@@ -259,7 +257,7 @@ bool checkWin(uint8_t board[board_height][board_width]) {
   return true;
 }
 
-void resetGame(uint8_t board[board_height][board_width]) {
+void resetGame(uint8_t *board) {
   memset(board, 0, sizeof(uint8_t) * board_width * board_height);
   mines_left = num_mines;
   game_running = true;
@@ -282,7 +280,8 @@ int main(void) {
   // uint8_t (*board)[board_width] = calloc(1, sizeof(uint8_t * board_width * board_height));
   // uint8_t (*board)[board_width] = calloc(board_height, sizeof(*board));
   // clang-format on
-  uint8_t(*board)[board_width] = calloc(board_width * board_height, sizeof(uint8_t));
+  // uint8_t(*board)[board_width] = calloc(board_width * board_height, sizeof(uint8_t));
+  uint8_t *board = calloc(board_width * board_height, sizeof(uint8_t));
   if (num_mines > board_width * board_height - 1) {
     num_mines = board_width * board_height - 1;
     mines_left = num_mines;
@@ -305,13 +304,13 @@ int main(void) {
     if (game_running) {
       int mouse_cell_x, mouse_cell_y;
       const bool mouse_is_on_cell = findCollisionCell(mouse_pos, top_left, &mouse_cell_x, &mouse_cell_y);
-      const uint8_t mouse_display_state = getDisplayState(board[mouse_cell_y][mouse_cell_x]);
-      if (getDisplayState(board[last_press_y][last_press_x]) == cell_display_state_press) {
-        board[last_press_y][last_press_x] = setDisplayState(board[last_press_y][last_press_x], cell_display_state_closed);
+      const uint8_t mouse_display_state = getDisplayState(BOARD(mouse_cell_x, mouse_cell_y));
+      if (getDisplayState(BOARD(last_press_x, last_press_y)) == cell_display_state_press) {
+        BOARD(last_press_x, last_press_y) = setDisplayState(BOARD(last_press_x, last_press_y), cell_display_state_closed);
       }
       if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         if (mouse_is_on_cell && mouse_display_state == cell_display_state_closed) {
-          board[mouse_cell_y][mouse_cell_x] = setDisplayState(board[mouse_cell_y][mouse_cell_x], cell_display_state_press);
+          BOARD(mouse_cell_x, mouse_cell_y) = setDisplayState(BOARD(mouse_cell_x, mouse_cell_y), cell_display_state_press);
           last_press_x = mouse_cell_x;
           last_press_y = mouse_cell_y;
         }
@@ -355,8 +354,8 @@ int main(void) {
     // Draw board
     for (int y = 0; y < board_height; ++y) {
       for (int x = 0; x < board_width; ++x) {
-        const uint8_t cell_number = getNumber(board[y][x]);
-        const uint8_t cell_display_state = getDisplayState(board[y][x]);
+        const uint8_t cell_number = getNumber(BOARD(x, y));
+        const uint8_t cell_display_state = getDisplayState(BOARD(x, y));
         const Vector2 cell_top_left = Vector2Add(top_left, (Vector2){x * 20.0f + 1.0f, y * 20.0f + 1.0f});
         const Vector2 cell_size = {18.0f, 18.0f};
         if (cell_display_state == cell_display_state_closed) {
@@ -425,7 +424,6 @@ int main(void) {
 
   free(mines_text);
   free(timer_text);
-
   free(board);
 
   return 0;
