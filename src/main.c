@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include <raylib.h>
@@ -16,9 +17,10 @@ int num_mines = 10;
 int mines_left = 10;
 
 uint32_t timer = 0;
-bool timer_started = false;
+bool timer_running = false;
 double timer_start = 0.0;
-bool game_over = false;
+bool game_running = true;
+bool is_first_open = true;
 
 const uint8_t number_mask = 0x0F; // 0b00001111
 
@@ -236,6 +238,36 @@ void revealMines(uint8_t board[board_height][board_width]) {
   }
 }
 
+void revealFlags(uint8_t board[board_height][board_width]) {
+  for (int y = 0; y < board_height; ++y) {
+    for (int x = 0; x < board_width; ++x) {
+      if (getNumber(board[y][x]) == 9 && getDisplayState(board[y][x]) != cell_display_state_flagged) {
+        board[y][x] = setDisplayState(board[y][x], cell_display_state_flagged);
+      }
+    }
+  }
+}
+
+bool checkWin(uint8_t board[board_height][board_width]) {
+  for (int y = 0; y < board_height; ++y) {
+    for (int x = 0; x < board_width; ++x) {
+      if (getNumber(board[y][x]) != 9 && getDisplayState(board[y][x]) != cell_display_state_open) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+void resetGame(uint8_t board[board_height][board_width]) {
+  memset(board, 0, sizeof(uint8_t) * board_width * board_height);
+  mines_left = num_mines;
+  game_running = true;
+  is_first_open = true;
+  timer_running = false;
+  timer = 0;
+}
+
 int main(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);
   int window_width = 40 + board_width * 20;
@@ -256,7 +288,6 @@ int main(void) {
     mines_left = num_mines;
   }
 
-  bool is_first_open = true;
   int last_press_x = 0;
   int last_press_y = 0;
 
@@ -271,38 +302,44 @@ int main(void) {
 
     Vector2 mouse_pos = GetMousePosition();
 
-    if (!game_over) {
+    if (game_running) {
       int mouse_cell_x, mouse_cell_y;
       const bool mouse_is_on_cell = findCollisionCell(mouse_pos, top_left, &mouse_cell_x, &mouse_cell_y);
       const uint8_t mouse_display_state = getDisplayState(board[mouse_cell_y][mouse_cell_x]);
       if (getDisplayState(board[last_press_y][last_press_x]) == cell_display_state_press) {
         board[last_press_y][last_press_x] = setDisplayState(board[last_press_y][last_press_x], cell_display_state_closed);
       }
-      if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+      if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         if (mouse_is_on_cell && mouse_display_state == cell_display_state_closed) {
           board[mouse_cell_y][mouse_cell_x] = setDisplayState(board[mouse_cell_y][mouse_cell_x], cell_display_state_press);
           last_press_x = mouse_cell_x;
           last_press_y = mouse_cell_y;
         }
       }
-      if (IsMouseButtonReleased(MOUSE_LEFT_BUTTON)) {
+      if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         if (mouse_is_on_cell) {
           if (is_first_open) {
             generateMines(board, mouse_cell_x, mouse_cell_y);
             is_first_open = false;
-            timer_started = true;
+            timer_running = true;
             timer_start = GetTime();
           }
           int open_result = openCell(board, mouse_cell_x, mouse_cell_y);
           if (open_result == -1) {
             // GAME OVER
-            timer_started = false;
-            game_over = true;
+            timer_running = false;
+            game_running = false;
             revealMines(board);
+          } else if (open_result == 0) {
+            if (checkWin(board)) {
+              timer_running = false;
+              game_running = false;
+              revealFlags(board);
+            }
           }
         }
       }
-      if (IsMouseButtonPressed(MOUSE_RIGHT_BUTTON)) {
+      if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
         if (mouse_is_on_cell) {
           if (mouse_display_state == cell_display_state_closed || mouse_display_state == cell_display_state_flagged) {
             toggleFlagged(board, mouse_cell_x, mouse_cell_y);
@@ -350,23 +387,36 @@ int main(void) {
     }
 
     // Draw UI
-    int new_length;
-    if ((new_length = snprintf(NULL, 0, "%d", mines_left) + 1) > mines_text_length) {
-      mines_text_length = new_length;
+    // Mines counter
+    int new_text_length;
+    if ((new_text_length = snprintf(NULL, 0, "%d", mines_left) + 1) > mines_text_length) {
+      mines_text_length = new_text_length;
       mines_text = realloc(mines_text, sizeof(char) * mines_text_length);
     }
     snprintf(mines_text, mines_text_length, "%d", mines_left);
     DrawText(mines_text, 20, 20, 30, BLACK);
 
-    if (timer_started) {
+    // Timer
+    if (timer_running) {
       timer = (int)(GetTime() - timer_start);
     }
-    if ((new_length = snprintf(NULL, 0, "%u", timer) + 1) > timer_text_length) {
-      timer_text_length = new_length;
+    if ((new_text_length = snprintf(NULL, 0, "%u", timer) + 1) > timer_text_length) {
+      timer_text_length = new_text_length;
       timer_text = realloc(timer_text, sizeof(char) * timer_text_length);
     }
     snprintf(timer_text, timer_text_length, "%u", timer);
     DrawText(timer_text, window_width - 20 - MeasureText(timer_text, 30), 20, 30, BLACK);
+
+    // Button
+    Rectangle button = {window_width / 2.0f - 15.0f, 20.0f, 30.0f, 30.0f};
+    if (CheckCollisionPointRec(mouse_pos, button) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+      DrawRectangleRec(button, LIGHTGRAY);
+    } else {
+      DrawRectangle(window_width / 2 - 15, 20, 30, 30, BLACK);
+      if (CheckCollisionPointRec(mouse_pos, button) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        resetGame(board);
+      }
+    }
 
     EndDrawing();
   }
