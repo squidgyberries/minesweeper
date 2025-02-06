@@ -9,3 +9,4 @@ add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter)
 
 add_executable(${PROJECT_NAME} src/main.c)
 target_link_libraries(${PROJECT_NAME} raylib)
+target_include_directories(${PROJECT_NAME} PRIVATE deps)

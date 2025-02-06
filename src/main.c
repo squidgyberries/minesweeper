@@ -9,14 +9,20 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#define BOARD(x,y) (board[(y) * board_height + (x)])
+#define RAYGUI_IMPLEMENTATION
+#include "raygui.h"
+
+#define BOARD(x, y) (board[(y) * board_width + (x)])
 
 const Color number_colors[] = {LIGHTGRAY, BLUE, GREEN, RED, DARKBLUE, MAROON, SKYBLUE, BLACK, GRAY};
 
-const int board_width = 9;
-const int board_height = 9;
+int board_width = 9;
+int board_height = 9;
 int num_mines = 10;
 int mines_left = 10;
+
+int window_width;
+int window_height;
 
 uint32_t timer = 0;
 bool timer_running = false;
@@ -268,8 +274,8 @@ void resetGame(uint8_t *board) {
 
 int main(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);
-  int window_width = 40 + board_width * 20;
-  int window_height = 90 + board_height * 20;
+  window_width = 40 + board_width * 20;
+  window_height = 110 + board_height * 20;
   InitWindow(window_width, window_height, "minesweeper");
 
   srand(time(NULL));
@@ -281,11 +287,12 @@ int main(void) {
   // uint8_t (*board)[board_width] = calloc(board_height, sizeof(*board));
   // clang-format on
   // uint8_t(*board)[board_width] = calloc(board_width * board_height, sizeof(uint8_t));
-  uint8_t *board = calloc(board_width * board_height, sizeof(uint8_t));
   if (num_mines > board_width * board_height - 1) {
     num_mines = board_width * board_height - 1;
     mines_left = num_mines;
   }
+  uint8_t *board = malloc(sizeof(uint8_t) * board_width * board_height);
+  resetGame(board);
 
   int last_press_x = 0;
   int last_press_y = 0;
@@ -297,7 +304,7 @@ int main(void) {
   char *timer_text = malloc(sizeof(char) * timer_text_length);
   snprintf(timer_text, timer_text_length, "%u", timer);
   while (!WindowShouldClose()) {
-    Vector2 top_left = (Vector2){20.0f, 70.0f};
+    Vector2 top_left = (Vector2){20.0f, 90.0f};
 
     Vector2 mouse_pos = GetMousePosition();
 
@@ -393,7 +400,7 @@ int main(void) {
       mines_text = realloc(mines_text, sizeof(char) * mines_text_length);
     }
     snprintf(mines_text, mines_text_length, "%d", mines_left);
-    DrawText(mines_text, 20, 20, 30, BLACK);
+    DrawText(mines_text, 20, 40, 30, BLACK);
 
     // Timer
     if (timer_running) {
@@ -404,16 +411,113 @@ int main(void) {
       timer_text = realloc(timer_text, sizeof(char) * timer_text_length);
     }
     snprintf(timer_text, timer_text_length, "%u", timer);
-    DrawText(timer_text, window_width - 20 - MeasureText(timer_text, 30), 20, 30, BLACK);
+    DrawText(timer_text, window_width - 20 - MeasureText(timer_text, 30), 40, 30, BLACK);
 
     // Button
-    Rectangle button = {window_width / 2.0f - 15.0f, 20.0f, 30.0f, 30.0f};
+    Rectangle button = {window_width / 2.0f - 15.0f, 40.0f, 30.0f, 30.0f};
     if (CheckCollisionPointRec(mouse_pos, button) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
       DrawRectangleRec(button, LIGHTGRAY);
     } else {
-      DrawRectangle(window_width / 2 - 15, 20, 30, 30, BLACK);
+      DrawRectangleRec(button, BLACK);
       if (CheckCollisionPointRec(mouse_pos, button) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         resetGame(board);
+      }
+    }
+
+    // Dialogue
+    static bool show_game_dialog = false;
+    if (GuiButton((Rectangle){0.0f, 0.0f, (float)window_width, 20.0f}, "Game")) {
+      show_game_dialog = true;
+      game_running = false;
+    }
+
+    Vector2 dialog_top_left = {(float)window_width / 2.0f - 90.0f, 10.0f * (float)board_height};
+    if (show_game_dialog) {
+      int result = GuiWindowBox((Rectangle){dialog_top_left.x, dialog_top_left.y, 180.0f, 180.0f}, "Game");
+
+      GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 28.0f, 160.0f, 20.0f}, "Mode:");
+      static int active = 0;
+      static bool dropdown_active = false;
+      GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 73.0f, 160.0f, 20.0f}, "Width:");
+      GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 98.0f, 160.0f, 20.0f}, "Height:");
+      GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 123.0f, 160.0f, 20.0f}, "Mines:");
+
+      static int custom_board_width = 30;
+      static int custom_board_height = 30;
+      static int custom_mines = 150;
+      if (active == 0) {
+        GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_RIGHT);
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 73.0f, 160.0f, 20.0f}, "9");
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 98.0f, 160.0f, 20.0f}, "9");
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 123.0f, 160.0f, 20.0f}, "10");
+        GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
+      } else if (active == 1) {
+        GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_RIGHT);
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 73.0f, 160.0f, 20.0f}, "16");
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 98.0f, 160.0f, 20.0f}, "16");
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 123.0f, 160.0f, 20.0f}, "40");
+        GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
+      } else if (active == 2) {
+        GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_RIGHT);
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 73.0f, 160.0f, 20.0f}, "30");
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 98.0f, 160.0f, 20.0f}, "16");
+        GuiLabel((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 123.0f, 160.0f, 20.0f}, "99");
+        GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
+      } else if (active == 3) {
+        static bool width_edit_mode = false;
+        if (GuiValueBox((Rectangle){dialog_top_left.x + 90.0f, dialog_top_left.y + 73.0f, 80.0f, 20.0f}, NULL, &custom_board_width, 1, 1000,
+                        width_edit_mode)) {
+          width_edit_mode = !width_edit_mode;
+        }
+
+        static bool height_edit_mode = false;
+        if (GuiValueBox((Rectangle){dialog_top_left.x + 90.0f, dialog_top_left.y + 98.0f, 80.0f, 20.0f}, NULL, &custom_board_height, 1, 1000,
+                        height_edit_mode)) {
+          height_edit_mode = !height_edit_mode;
+        }
+
+        static bool mines_edit_mode = false;
+        if (GuiValueBox((Rectangle){dialog_top_left.x + 90.0f, dialog_top_left.y + 123.0f, 80.0f, 20.0f}, NULL, &custom_mines, 1, 1000,
+                        mines_edit_mode)) {
+          mines_edit_mode = !mines_edit_mode;
+        }
+      }
+
+      if (GuiButton((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 150.0f, 160.0f, 20.0f}, "Start Game")) {
+        show_game_dialog = false;
+        game_running = true;
+        if (active == 0) {
+          board_width = 9;
+          board_height = 9;
+          num_mines = 10;
+        } else if (active == 1) {
+          board_width = 16;
+          board_height = 16;
+          num_mines = 40;
+        } else if (active == 2) {
+          board_width = 30;
+          board_height = 16;
+          num_mines = 99;
+        } else if (active == 3) {
+          board_width = custom_board_width;
+          board_height = custom_board_height;
+          num_mines = custom_mines;
+        }
+        board = realloc(board, sizeof(uint8_t) * board_width * board_height);
+        window_width = 40 + board_width * 20;
+        window_height = 110 + board_height * 20;
+        SetWindowSize(window_width, window_height);
+        resetGame(board);
+      }
+
+      if (GuiDropdownBox((Rectangle){dialog_top_left.x + 10.0f, dialog_top_left.y + 48.0f, 160.0f, 20.0f}, "Beginner;Intermediate;Expert;Custom", &active,
+                         dropdown_active)) {
+        dropdown_active = !dropdown_active;
+      }
+
+      if (result) {
+        show_game_dialog = false;
+        game_running = true;
       }
     }
 
