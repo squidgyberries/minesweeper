@@ -14,8 +14,6 @@
 
 #define BOARD(x, y) (board[(y) * board_width + (x)])
 
-const Color number_colors[] = {LIGHTGRAY, BLUE, GREEN, RED, DARKBLUE, MAROON, SKYBLUE, BLACK, GRAY};
-
 int board_width = 9;
 int board_height = 9;
 int num_mines = 10;
@@ -29,11 +27,37 @@ char *difficulty_strs[] = {"9", "9", "10", "16", "16", "40", "30", "16", "99"};
 int window_width;
 int window_height;
 
+Rectangle atlas_rects[] = {
+    {0.0f, 0.0f, 0.0f, 0.0f},     {0.0f, 0.0f, 20.0f, 20.0f},  {20.0f, 0.0f, 20.0f, 20.0f},  {40.0f, 0.0f, 20.0f, 20.0f},
+    {60.0f, 0.0f, 20.0f, 20.0f},  {0.0f, 20.0f, 20.0f, 20.0f}, {20.0f, 20.0f, 20.0f, 20.0f}, {40.0f, 20.0f, 20.0f, 20.0f},
+    {60.0f, 20.0f, 20.0f, 20.0f}, {0.0f, 40.0f, 20.0f, 20.0f}, {20.0f, 40.0f, 20.0f, 20.0f}, {40.0f, 40.0f, 20.0f, 20.0f},
+    {60.0f, 40.0f, 20.0f, 20.0f}, {0.0f, 60.0f, 20.0f, 20.0f}, {20.0f, 60.0f, 20.0f, 20.0f}, {40.0f, 60.0f, 20.0f, 20.0f},
+    {60.0f, 60.0f, 20.0f, 20.0f}, {0.0f, 80.0f, 20.0f, 20.0f}, {20.0f, 80.0f, 20.0f, 20.0f}, {40.0f, 80.0f, 20.0f, 20.0f},
+    {60.0f, 80.0f, 20.0f, 20.0f}, {0.0f, 100.0f, 20.0f, 20.0f}};
+
+typedef enum CellRects {
+  ATLAS_FLAGGED = 9,
+  ATLAS_MINE,
+  ATLAS_MISTAKE,
+  ATLAS_FLAG_MISTAKE,
+  ATLAS_CLOSED,
+  ATLAS_OPEN,
+  ATLAS_BACKGROUND,
+  ATLAS_FOREGROUND,
+  ATLAS_FACE_SMILE,
+  ATLAS_FACE_PRESSED,
+  ATLAS_FACE_SCARED,
+  ATLAS_FACE_DEAD,
+  ATLAS_FACE_WIN
+} CellRects;
+
 uint32_t timer = 0;
 bool timer_running = false;
 double timer_start = 0.0;
 bool game_running = true;
 bool is_first_open = true;
+bool game_over = false;
+bool game_won = false;
 
 const uint8_t number_mask = 0x0F; // 0b00001111
 
@@ -251,7 +275,7 @@ void revealFlags(uint8_t *board) {
   for (int y = 0; y < board_height; ++y) {
     for (int x = 0; x < board_width; ++x) {
       if (getNumber(BOARD(x, y)) == 9 && getDisplayState(BOARD(x, y)) != cell_display_state_flagged) {
-        BOARD(x, y) = setDisplayState(BOARD(x, y), cell_display_state_flagged);
+        toggleFlagged(board, x, y);
       }
     }
   }
@@ -272,6 +296,7 @@ void resetGame(uint8_t *board) {
   memset(board, 0, sizeof(uint8_t) * board_width * board_height);
   mines_left = num_mines;
   game_running = true;
+  game_over = false;
   is_first_open = true;
   timer_running = false;
   timer = 0;
@@ -309,14 +334,22 @@ int main(void) {
   int timer_text_length = snprintf(NULL, 0, "%u", timer) + 1;
   char *timer_text = malloc(sizeof(char) * timer_text_length);
   snprintf(timer_text, timer_text_length, "%u", timer);
+
+  Image texture_atlas_image = LoadImage("resources/texture_atlas.png");
+  const Color background_color = GetImageColor(texture_atlas_image, atlas_rects[ATLAS_BACKGROUND].x, atlas_rects[ATLAS_BACKGROUND].y);
+  const Color foreground_color = GetImageColor(texture_atlas_image, atlas_rects[ATLAS_FOREGROUND].x, atlas_rects[ATLAS_FOREGROUND].y);
+  Texture2D texture_atlas = LoadTextureFromImage(texture_atlas_image);
+  SetTextureFilter(texture_atlas, TEXTURE_FILTER_POINT);
+  UnloadImage(texture_atlas_image);
+
   while (!WindowShouldClose()) {
     Vector2 top_left = (Vector2){20.0f, 90.0f};
 
     Vector2 mouse_pos = GetMousePosition();
 
+    int mouse_cell_x, mouse_cell_y;
+    const bool mouse_is_on_cell = findCollisionCell(mouse_pos, top_left, &mouse_cell_x, &mouse_cell_y);
     if (game_running) {
-      int mouse_cell_x, mouse_cell_y;
-      const bool mouse_is_on_cell = findCollisionCell(mouse_pos, top_left, &mouse_cell_x, &mouse_cell_y);
       const uint8_t mouse_display_state = getDisplayState(BOARD(mouse_cell_x, mouse_cell_y));
       if (getDisplayState(BOARD(last_press_x, last_press_y)) == cell_display_state_press) {
         BOARD(last_press_x, last_press_y) = setDisplayState(BOARD(last_press_x, last_press_y), cell_display_state_closed);
@@ -341,11 +374,15 @@ int main(void) {
             // GAME OVER
             timer_running = false;
             game_running = false;
+            game_won = false;
+            game_over = true;
             revealMines(board);
           } else if (open_result == 0) {
             if (checkWin(board)) {
               timer_running = false;
               game_running = false;
+              game_won = true;
+              game_over = true;
               revealFlags(board);
             }
           }
@@ -362,38 +399,35 @@ int main(void) {
 
     BeginDrawing();
 
-    ClearBackground(WHITE);
+    ClearBackground(background_color);
 
     // Draw board
     for (int y = 0; y < board_height; ++y) {
       for (int x = 0; x < board_width; ++x) {
         const uint8_t cell_number = getNumber(BOARD(x, y));
         const uint8_t cell_display_state = getDisplayState(BOARD(x, y));
-        const Vector2 cell_top_left = Vector2Add(top_left, (Vector2){x * 20.0f + 1.0f, y * 20.0f + 1.0f});
-        const Vector2 cell_size = {18.0f, 18.0f};
+        const Vector2 cell_top_left = Vector2Add(top_left, (Vector2){x * 20.0f, y * 20.0f});
         if (cell_display_state == cell_display_state_closed) {
-          DrawRectangleV(cell_top_left, cell_size, BLACK);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_CLOSED], cell_top_left, WHITE);
         } else if (cell_display_state == cell_display_state_open) {
-          DrawRectangleV(cell_top_left, cell_size, LIGHTGRAY);
-          if (cell_number != 0) {
-            char str[2];
-            snprintf(str, 2, "%u", cell_number);
-            DrawText(str, cell_top_left.x + 4, cell_top_left.y, 20, number_colors[cell_number]);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_OPEN], cell_top_left, WHITE);
+          if (cell_number > 0 && cell_number < 9) {
+            DrawTextureRec(texture_atlas, atlas_rects[cell_number], cell_top_left, WHITE);
           }
         } else if (cell_display_state == cell_display_state_flagged) {
-          DrawRectangleV(cell_top_left, cell_size, BLACK);
-          DrawText("F", cell_top_left.x + 4, cell_top_left.y, 20, RED);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_CLOSED], cell_top_left, WHITE);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_FLAGGED], cell_top_left, WHITE);
         } else if (cell_display_state == cell_display_state_mine) {
-          DrawRectangleV(cell_top_left, cell_size, LIGHTGRAY);
-          DrawText("M", cell_top_left.x + 4, cell_top_left.y, 20, BLACK);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_OPEN], cell_top_left, WHITE);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_MINE], cell_top_left, WHITE);
         } else if (cell_display_state == cell_display_state_mistake) {
-          DrawRectangleV(cell_top_left, cell_size, RED);
-          DrawText("M", cell_top_left.x + 4, cell_top_left.y, 20, BLACK);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_OPEN], cell_top_left, WHITE);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_MISTAKE], cell_top_left, WHITE);
         } else if (cell_display_state == cell_display_state_flag_mistake) {
-          DrawRectangleV(cell_top_left, cell_size, LIGHTGRAY);
-          DrawText("M", cell_top_left.x + 4, cell_top_left.y, 20, RED);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_OPEN], cell_top_left, WHITE);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_FLAG_MISTAKE], cell_top_left, WHITE);
         } else if (cell_display_state == cell_display_state_press) {
-          DrawRectangleV(cell_top_left, cell_size, LIGHTGRAY);
+          DrawTextureRec(texture_atlas, atlas_rects[ATLAS_OPEN], cell_top_left, WHITE);
         }
       }
     }
@@ -406,7 +440,7 @@ int main(void) {
       mines_text = realloc(mines_text, sizeof(char) * mines_text_length);
     }
     snprintf(mines_text, mines_text_length, "%d", mines_left);
-    DrawText(mines_text, 20, 40, 30, BLACK);
+    DrawText(mines_text, 20, 40, 30, foreground_color);
 
     // Timer
     if (timer_running) {
@@ -417,14 +451,21 @@ int main(void) {
       timer_text = realloc(timer_text, sizeof(char) * timer_text_length);
     }
     snprintf(timer_text, timer_text_length, "%u", timer);
-    DrawText(timer_text, window_width - 20 - MeasureText(timer_text, 30), 40, 30, BLACK);
+    DrawText(timer_text, window_width - 20 - MeasureText(timer_text, 30), 40, 30, foreground_color);
 
     // Button
-    Rectangle button = {window_width / 2.0f - 15.0f, 40.0f, 30.0f, 30.0f};
+    Rectangle button = {window_width / 2.0f - 20.0f, 35.0f, 40.0f, 40.0f};
     if (CheckCollisionPointRec(mouse_pos, button) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-      DrawRectangleRec(button, LIGHTGRAY);
+      DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_PRESSED], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
     } else {
-      DrawRectangleRec(button, BLACK);
+      DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_SMILE], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+      if (game_over && game_won) {
+        DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_WIN], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+      } else if (game_over && !game_won) {
+        DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_DEAD], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+      } else if (mouse_is_on_cell && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_SCARED], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+      }
       if (CheckCollisionPointRec(mouse_pos, button) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         resetGame(board);
       }
@@ -512,6 +553,8 @@ int main(void) {
 
     EndDrawing();
   }
+
+  UnloadTexture(texture_atlas);
 
   CloseWindow();
 
