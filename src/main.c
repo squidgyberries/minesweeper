@@ -121,16 +121,15 @@ bool findCollisionCell(Vector2 mouse_pos, Vector2 top_left, int *out_x, int *out
   return false;
 }
 
-// -1: mistake
-// 0: successful
-// 1: didn't open
-int openCell(uint8_t *board, int x, int y) {
+// false: mistake
+// true: safe
+bool openCell(uint8_t *board, int x, int y) {
   if (getDisplayState(BOARD(x, y)) != cell_display_state_closed) {
-    return 1;
+    return true;
   }
   if (getNumber(BOARD(x, y)) == 9) {
     BOARD(x, y) = setDisplayState(BOARD(x, y), cell_display_state_mistake);
-    return -1;
+    return false;
   }
 
   BOARD(x, y) = setDisplayState(BOARD(x, y), cell_display_state_open);
@@ -164,7 +163,74 @@ int openCell(uint8_t *board, int x, int y) {
       openCell(board, x, y + 1);
     }
   }
-  return 0;
+  return true;
+}
+
+// false: mistake
+// true: safe
+bool openNeighbors(uint8_t *board, int x, int y) {
+  bool result = true;
+
+  const bool left_edge = x == 0;
+  const bool right_edge = x == (board_width - 1);
+  const bool top_edge = y == 0;
+  const bool bottom_edge = y == (board_height - 1);
+  // clang-format off
+  const uint8_t neighbors_flagged = (!left_edge && !top_edge && getDisplayState(BOARD(x - 1, y - 1)) == cell_display_state_flagged) +
+                                    (!left_edge && getDisplayState(BOARD(x - 1, y)) == cell_display_state_flagged) +
+                                    (!left_edge && !bottom_edge && getDisplayState(BOARD(x - 1, y + 1)) == cell_display_state_flagged) +
+
+                                    (!right_edge && !top_edge && getDisplayState(BOARD(x + 1, y - 1)) == cell_display_state_flagged) +
+                                    (!right_edge && getDisplayState(BOARD(x + 1, y)) == cell_display_state_flagged) +
+                                    (!right_edge && !bottom_edge && getDisplayState(BOARD(x + 1, y + 1)) == cell_display_state_flagged) +
+
+                                    (!top_edge && getDisplayState(BOARD(x, y - 1)) == cell_display_state_flagged) +
+                                    (!bottom_edge && getDisplayState(BOARD(x, y + 1)) == cell_display_state_flagged);
+  // clang-format on
+  if (neighbors_flagged == getNumber(BOARD(x, y))) {
+    if (!left_edge) {
+      if (!openCell(board, x - 1, y)) {
+        result = false;
+      }
+      if (!top_edge) {
+        if (!openCell(board, x - 1, y - 1)) {
+          result = false;
+        }
+      }
+      if (!bottom_edge) {
+        if (!openCell(board, x - 1, y + 1)) {
+          result = false;
+        }
+      }
+    }
+    if (!right_edge) {
+      if (!openCell(board, x + 1, y)) {
+        result = false;
+      }
+      if (!top_edge) {
+        if (!openCell(board, x + 1, y - 1)) {
+          result = false;
+        }
+      }
+      if (!bottom_edge) {
+        if (!openCell(board, x + 1, y + 1)) {
+          result = false;
+        }
+      }
+    }
+    if (!top_edge) {
+      if (!openCell(board, x, y - 1)) {
+        result = false;
+      }
+    }
+    if (!bottom_edge) {
+      if (!openCell(board, x, y + 1)) {
+        result = false;
+      }
+    }
+  }
+
+  return result;
 }
 
 void toggleFlagged(uint8_t *board, int x, int y) {
@@ -347,9 +413,6 @@ int main(void) {
   }
   resetGame(board);
 
-  int last_press_x = 0;
-  int last_press_y = 0;
-
   int mines_text_length = snprintf(NULL, 0, "%d", mines_left) + 1;
   char *mines_text = malloc(sizeof(char) * mines_text_length);
   snprintf(mines_text, mines_text_length, "%d", mines_left);
@@ -370,11 +433,7 @@ int main(void) {
   while (!WindowShouldClose()) {
     Vector2 top_left = (Vector2){20.0f, 90.0f};
 
-    // Vector2 real_mouse_pos = GetMousePosition();
-    // Vector2 mouse_pos = Vector2Scale(real_mouse_pos, 1.0f / scale);
-    
     // Apply the same transformation as the virtual mouse to the real mouse (i.e. to work with raygui)
-    // SetMouseOffset(-(GetScreenWidth() - (gameScreenWidth*scale))*0.5f, -(GetScreenHeight() - (gameScreenHeight*scale))*0.5f);
     SetMouseScale(1.0f / scale, 1.0f / scale);
     Vector2 mouse_pos = GetMousePosition();
 
@@ -382,8 +441,70 @@ int main(void) {
     const bool mouse_is_on_cell = findCollisionCell(mouse_pos, top_left, &mouse_cell_x, &mouse_cell_y);
     if (game_running) {
       const uint8_t mouse_display_state = getDisplayState(BOARD(mouse_cell_x, mouse_cell_y));
+      static int last_press_x = 0;
+      static int last_press_y = 0;
+      static int last_neighbor_press_x = 0;
+      static int last_neighbor_press_y = 0;
       if (getDisplayState(BOARD(last_press_x, last_press_y)) == cell_display_state_press) {
         BOARD(last_press_x, last_press_y) = setDisplayState(BOARD(last_press_x, last_press_y), cell_display_state_closed);
+      }
+      if (getDisplayState(BOARD(last_neighbor_press_x, last_neighbor_press_y)) == cell_display_state_press) {
+        BOARD(last_neighbor_press_x, last_neighbor_press_y) =
+            setDisplayState(BOARD(last_neighbor_press_x, last_neighbor_press_y), cell_display_state_closed);
+      }
+      {
+        const bool left_edge = last_neighbor_press_x == 0;
+        const bool right_edge = last_neighbor_press_x == (board_width - 1);
+        const bool top_edge = last_neighbor_press_y == 0;
+        const bool bottom_edge = last_neighbor_press_y == (board_height - 1);
+        if (!left_edge) {
+          if (getDisplayState(BOARD(last_neighbor_press_x - 1, last_neighbor_press_y)) == cell_display_state_press) {
+            BOARD(last_neighbor_press_x - 1, last_neighbor_press_y) =
+                setDisplayState(BOARD(last_neighbor_press_x - 1, last_neighbor_press_y), cell_display_state_closed);
+          }
+          if (!top_edge) {
+            if (getDisplayState(BOARD(last_neighbor_press_x - 1, last_neighbor_press_y - 1)) == cell_display_state_press) {
+              BOARD(last_neighbor_press_x - 1, last_neighbor_press_y - 1) =
+                  setDisplayState(BOARD(last_neighbor_press_x - 1, last_neighbor_press_y - 1), cell_display_state_closed);
+            }
+          }
+          if (!bottom_edge) {
+            if (getDisplayState(BOARD(last_neighbor_press_x - 1, last_neighbor_press_y + 1)) == cell_display_state_press) {
+              BOARD(last_neighbor_press_x - 1, last_neighbor_press_y + 1) =
+                  setDisplayState(BOARD(last_neighbor_press_x - 1, last_neighbor_press_y + 1), cell_display_state_closed);
+            }
+          }
+        }
+        if (!right_edge) {
+          if (getDisplayState(BOARD(last_neighbor_press_x + 1, last_neighbor_press_y)) == cell_display_state_press) {
+            BOARD(last_neighbor_press_x + 1, last_neighbor_press_y) =
+                setDisplayState(BOARD(last_neighbor_press_x + 1, last_neighbor_press_y), cell_display_state_closed);
+          }
+          if (!top_edge) {
+            if (getDisplayState(BOARD(last_neighbor_press_x + 1, last_neighbor_press_y - 1)) == cell_display_state_press) {
+              BOARD(last_neighbor_press_x + 1, last_neighbor_press_y - 1) =
+                  setDisplayState(BOARD(last_neighbor_press_x + 1, last_neighbor_press_y - 1), cell_display_state_closed);
+            }
+          }
+          if (!bottom_edge) {
+            if (getDisplayState(BOARD(last_neighbor_press_x + 1, last_neighbor_press_y + 1)) == cell_display_state_press) {
+              BOARD(last_neighbor_press_x + 1, last_neighbor_press_y + 1) =
+                  setDisplayState(BOARD(last_neighbor_press_x + 1, last_neighbor_press_y + 1), cell_display_state_closed);
+            }
+          }
+        }
+        if (!top_edge) {
+          if (getDisplayState(BOARD(last_neighbor_press_x, last_neighbor_press_y - 1)) == cell_display_state_press) {
+            BOARD(last_neighbor_press_x, last_neighbor_press_y - 1) =
+                setDisplayState(BOARD(last_neighbor_press_x, last_neighbor_press_y - 1), cell_display_state_closed);
+          }
+        }
+        if (!bottom_edge) {
+          if (getDisplayState(BOARD(last_neighbor_press_x, last_neighbor_press_y + 1)) == cell_display_state_press) {
+            BOARD(last_neighbor_press_x, last_neighbor_press_y + 1) =
+                setDisplayState(BOARD(last_neighbor_press_x, last_neighbor_press_y + 1), cell_display_state_closed);
+          }
+        }
       }
       if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         if (mouse_is_on_cell && mouse_display_state == cell_display_state_closed) {
@@ -400,15 +521,15 @@ int main(void) {
             timer_running = true;
             timer_start = GetTime();
           }
-          int open_result = openCell(board, mouse_cell_x, mouse_cell_y);
-          if (open_result == -1) {
+          bool open_result = openCell(board, mouse_cell_x, mouse_cell_y);
+          if (!open_result) {
             // GAME OVER
             timer_running = false;
             game_running = false;
             game_won = false;
             game_over = true;
             revealMines(board);
-          } else if (open_result == 0) {
+          } else if (open_result) {
             if (checkWin(board)) {
               timer_running = false;
               game_running = false;
@@ -423,6 +544,111 @@ int main(void) {
         if (mouse_is_on_cell) {
           if (mouse_display_state == cell_display_state_closed || mouse_display_state == cell_display_state_flagged) {
             toggleFlagged(board, mouse_cell_x, mouse_cell_y);
+          }
+        }
+      }
+      if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+        if (mouse_is_on_cell) {
+          if (getDisplayState(BOARD(mouse_cell_x, mouse_cell_y)) == cell_display_state_closed) {
+            BOARD(mouse_cell_x, mouse_cell_y) = setDisplayState(BOARD(mouse_cell_x, mouse_cell_y), cell_display_state_press);
+          }
+          const bool left_edge = mouse_cell_x == 0;
+          const bool right_edge = mouse_cell_x == (board_width - 1);
+          const bool top_edge = mouse_cell_y == 0;
+          const bool bottom_edge = mouse_cell_y == (board_height - 1);
+          if (!left_edge) {
+            if (getDisplayState(BOARD(mouse_cell_x - 1, mouse_cell_y)) == cell_display_state_closed) {
+              BOARD(mouse_cell_x - 1, mouse_cell_y) = setDisplayState(BOARD(mouse_cell_x - 1, mouse_cell_y), cell_display_state_press);
+            }
+            if (!top_edge) {
+              if (getDisplayState(BOARD(mouse_cell_x - 1, mouse_cell_y - 1)) == cell_display_state_closed) {
+                BOARD(mouse_cell_x - 1, mouse_cell_y - 1) =
+                    setDisplayState(BOARD(mouse_cell_x - 1, mouse_cell_y - 1), cell_display_state_press);
+              }
+            }
+            if (!bottom_edge) {
+              if (getDisplayState(BOARD(mouse_cell_x - 1, mouse_cell_y + 1)) == cell_display_state_closed) {
+                BOARD(mouse_cell_x - 1, mouse_cell_y + 1) =
+                    setDisplayState(BOARD(mouse_cell_x - 1, mouse_cell_y + 1), cell_display_state_press);
+              }
+            }
+          }
+          if (!right_edge) {
+            if (getDisplayState(BOARD(mouse_cell_x + 1, mouse_cell_y)) == cell_display_state_closed) {
+              BOARD(mouse_cell_x + 1, mouse_cell_y) = setDisplayState(BOARD(mouse_cell_x + 1, mouse_cell_y), cell_display_state_press);
+            }
+            if (!top_edge) {
+              if (getDisplayState(BOARD(mouse_cell_x + 1, mouse_cell_y - 1)) == cell_display_state_closed) {
+                BOARD(mouse_cell_x + 1, mouse_cell_y - 1) =
+                    setDisplayState(BOARD(mouse_cell_x + 1, mouse_cell_y - 1), cell_display_state_press);
+              }
+            }
+            if (!bottom_edge) {
+              if (getDisplayState(BOARD(mouse_cell_x + 1, mouse_cell_y + 1)) == cell_display_state_closed) {
+                BOARD(mouse_cell_x + 1, mouse_cell_y + 1) =
+                    setDisplayState(BOARD(mouse_cell_x + 1, mouse_cell_y + 1), cell_display_state_press);
+              }
+            }
+          }
+          if (!top_edge) {
+            if (getDisplayState(BOARD(mouse_cell_x, mouse_cell_y - 1)) == cell_display_state_closed) {
+              BOARD(mouse_cell_x, mouse_cell_y - 1) = setDisplayState(BOARD(mouse_cell_x, mouse_cell_y - 1), cell_display_state_press);
+            }
+          }
+          if (!bottom_edge) {
+            if (getDisplayState(BOARD(mouse_cell_x, mouse_cell_y + 1)) == cell_display_state_closed) {
+              BOARD(mouse_cell_x, mouse_cell_y + 1) = setDisplayState(BOARD(mouse_cell_x, mouse_cell_y + 1), cell_display_state_press);
+            }
+          }
+          last_neighbor_press_x = mouse_cell_x;
+          last_neighbor_press_y = mouse_cell_y;
+        }
+      }
+      if (IsMouseButtonReleased(MOUSE_BUTTON_MIDDLE)) {
+        if (mouse_is_on_cell) {
+          if (mouse_display_state == cell_display_state_open) {
+            bool open_result = openNeighbors(board, mouse_cell_x, mouse_cell_y);
+            if (!open_result) {
+              // GAME OVER
+              timer_running = false;
+              game_running = false;
+              game_won = false;
+              game_over = true;
+              revealMines(board);
+            } else if (open_result) {
+              if (checkWin(board)) {
+                timer_running = false;
+                game_running = false;
+                game_won = true;
+                game_over = true;
+                revealFlags(board);
+              }
+            }
+          }
+        }
+      }
+      if (IsKeyPressed(KEY_SPACE)) {
+        if (mouse_is_on_cell) {
+          if (mouse_display_state == cell_display_state_closed || mouse_display_state == cell_display_state_flagged) {
+            toggleFlagged(board, mouse_cell_x, mouse_cell_y);
+          } else if (mouse_display_state == cell_display_state_open) {
+            bool open_result = openNeighbors(board, mouse_cell_x, mouse_cell_y);
+            if (!open_result) {
+              // GAME OVER
+              timer_running = false;
+              game_running = false;
+              game_won = false;
+              game_over = true;
+              revealMines(board);
+            } else if (open_result) {
+              if (checkWin(board)) {
+                timer_running = false;
+                game_running = false;
+                game_won = true;
+                game_over = true;
+                revealFlags(board);
+              }
+            }
           }
         }
       }
@@ -619,8 +845,8 @@ int main(void) {
         SetWindowSize(render_width * scale, render_height * scale);
       }
 
-      if (GuiDropdownBox((Rectangle){inner_bounds.x, inner_bounds.y + 20.0f, inner_bounds.width, ui_height},
-                         "1;2", &active, dropdown_active)) {
+      if (GuiDropdownBox((Rectangle){inner_bounds.x, inner_bounds.y + 20.0f, inner_bounds.width, ui_height}, "1;2", &active,
+                         dropdown_active)) {
         dropdown_active = !dropdown_active;
       }
 
@@ -638,7 +864,7 @@ int main(void) {
 
     DrawTexturePro(render_target.texture, (Rectangle){0.0f, 0.0f, (float)render_width, (float)-render_height},
                    (Rectangle){0.0f, 0.0f, (float)render_width * scale, (float)render_height * scale}, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
-    
+
     EndDrawing();
   }
 
