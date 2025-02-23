@@ -24,16 +24,36 @@ int mines_left = 10;
 int difficulty_nums[] = {9, 9, 10, 16, 16, 40, 30, 16, 99};
 char *difficulty_strs[] = {"9", "9", "10", "16", "16", "40", "30", "16", "99"};
 
-int window_width;
-int window_height;
+int render_width;
+int render_height;
+float scale = 1.0f;
 
+// clang-format off
 Rectangle atlas_rects[] = {
-    {0.0f, 0.0f, 0.0f, 0.0f},     {0.0f, 0.0f, 20.0f, 20.0f},  {20.0f, 0.0f, 20.0f, 20.0f},  {40.0f, 0.0f, 20.0f, 20.0f},
-    {60.0f, 0.0f, 20.0f, 20.0f},  {0.0f, 20.0f, 20.0f, 20.0f}, {20.0f, 20.0f, 20.0f, 20.0f}, {40.0f, 20.0f, 20.0f, 20.0f},
-    {60.0f, 20.0f, 20.0f, 20.0f}, {0.0f, 40.0f, 20.0f, 20.0f}, {20.0f, 40.0f, 20.0f, 20.0f}, {40.0f, 40.0f, 20.0f, 20.0f},
-    {60.0f, 40.0f, 20.0f, 20.0f}, {0.0f, 60.0f, 20.0f, 20.0f}, {20.0f, 60.0f, 20.0f, 20.0f}, {40.0f, 60.0f, 20.0f, 20.0f},
-    {60.0f, 60.0f, 20.0f, 20.0f}, {0.0f, 80.0f, 20.0f, 20.0f}, {20.0f, 80.0f, 20.0f, 20.0f}, {40.0f, 80.0f, 20.0f, 20.0f},
-    {60.0f, 80.0f, 20.0f, 20.0f}, {0.0f, 100.0f, 20.0f, 20.0f}};
+  {0.0f, 0.0f, 0.0f, 0.0f},
+  {0.0f, 0.0f, 20.0f, 20.0f},
+  {20.0f, 0.0f, 20.0f, 20.0f},
+  {40.0f, 0.0f, 20.0f, 20.0f},
+  {60.0f, 0.0f, 20.0f, 20.0f},
+  {0.0f, 20.0f, 20.0f, 20.0f},
+  {20.0f, 20.0f, 20.0f, 20.0f},
+  {40.0f, 20.0f, 20.0f, 20.0f},
+  {60.0f, 20.0f, 20.0f, 20.0f},
+  {0.0f, 40.0f, 20.0f, 20.0f},
+  {20.0f, 40.0f, 20.0f, 20.0f},
+  {40.0f, 40.0f, 20.0f, 20.0f},
+  {60.0f, 40.0f, 20.0f, 20.0f},
+  {0.0f, 60.0f, 20.0f, 20.0f},
+  {20.0f, 60.0f, 20.0f, 20.0f},
+  {40.0f, 60.0f, 20.0f, 20.0f},
+  {60.0f, 60.0f, 20.0f, 20.0f},
+  {0.0f, 80.0f, 20.0f, 20.0f},
+  {20.0f, 80.0f, 20.0f, 20.0f},
+  {40.0f, 80.0f, 20.0f, 20.0f},
+  {60.0f, 80.0f, 20.0f, 20.0f},
+  {0.0f, 100.0f, 20.0f, 20.0f}
+};
+// clang-format on
 
 typedef enum CellRects {
   ATLAS_FLAGGED = 9,
@@ -302,20 +322,22 @@ void resetGame(uint8_t *board) {
   timer = 0;
 }
 
-void resizeBoard(uint8_t **board, int new_width, int new_height) {
+void resizeBoard(uint8_t **board, int new_width, int new_height, RenderTexture2D *render_target) {
   board_width = new_width;
   board_height = new_height;
   *board = realloc(*board, sizeof(uint8_t) * board_width * board_height);
-  window_width = 40 + board_width * 20;
-  window_height = 110 + board_height * 20;
-  SetWindowSize(window_width, window_height);
+  render_width = 40 + board_width * 20;
+  render_height = 110 + board_height * 20;
+  SetWindowSize(render_width * scale, render_height * scale);
+  UnloadRenderTexture(*render_target);
+  *render_target = LoadRenderTexture(render_width, render_height);
 }
 
 int main(void) {
   SetConfigFlags(FLAG_VSYNC_HINT);
-  window_width = 40 + board_width * 20;
-  window_height = 110 + board_height * 20;
-  InitWindow(window_width, window_height, "minesweeper");
+  render_width = 40 + board_width * 20;
+  render_height = 110 + board_height * 20;
+  InitWindow(render_width * scale, render_height * scale, "minesweeper");
 
   srand(time(NULL));
 
@@ -342,9 +364,18 @@ int main(void) {
   SetTextureFilter(texture_atlas, TEXTURE_FILTER_POINT);
   UnloadImage(texture_atlas_image);
 
+  RenderTexture2D render_target = LoadRenderTexture(render_width, render_height);
+  SetTextureFilter(render_target.texture, TEXTURE_FILTER_POINT);
+
   while (!WindowShouldClose()) {
     Vector2 top_left = (Vector2){20.0f, 90.0f};
 
+    // Vector2 real_mouse_pos = GetMousePosition();
+    // Vector2 mouse_pos = Vector2Scale(real_mouse_pos, 1.0f / scale);
+    
+    // Apply the same transformation as the virtual mouse to the real mouse (i.e. to work with raygui)
+    // SetMouseOffset(-(GetScreenWidth() - (gameScreenWidth*scale))*0.5f, -(GetScreenHeight() - (gameScreenHeight*scale))*0.5f);
+    SetMouseScale(1.0f / scale, 1.0f / scale);
     Vector2 mouse_pos = GetMousePosition();
 
     int mouse_cell_x, mouse_cell_y;
@@ -397,7 +428,8 @@ int main(void) {
       }
     }
 
-    BeginDrawing();
+    // BeginDrawing();
+    BeginTextureMode(render_target);
 
     ClearBackground(background_color);
 
@@ -451,38 +483,51 @@ int main(void) {
       timer_text = realloc(timer_text, sizeof(char) * timer_text_length);
     }
     snprintf(timer_text, timer_text_length, "%u", timer);
-    DrawText(timer_text, window_width - 20 - MeasureText(timer_text, 30), 40, 30, foreground_color);
+    DrawText(timer_text, render_width - 20 - MeasureText(timer_text, 30), 40, 30, foreground_color);
 
     // Button
-    Rectangle button = {window_width / 2.0f - 20.0f, 35.0f, 40.0f, 40.0f};
+    Rectangle button = {render_width * 0.5f - 20.0f, 35.0f, 40.0f, 40.0f};
     if (CheckCollisionPointRec(mouse_pos, button) && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
       DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_PRESSED], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
     } else {
       DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_SMILE], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
-      if (game_over && game_won) {
-        DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_WIN], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
-      } else if (game_over && !game_won) {
-        DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_DEAD], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
-      } else if (mouse_is_on_cell && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-        DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_SCARED], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+      if (game_running) {
+        if (game_over && game_won) {
+          DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_WIN], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+        } else if (game_over && !game_won) {
+          DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_DEAD], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+        } else if (mouse_is_on_cell && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+          DrawTexturePro(texture_atlas, atlas_rects[ATLAS_FACE_SCARED], button, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+        }
       }
       if (CheckCollisionPointRec(mouse_pos, button) && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
         resetGame(board);
       }
     }
 
-    // Dialogue
+    // Dialogue buttons
     const float ui_height = 20.0f;
     static bool show_game_dialog = false;
-    if (GuiButton((Rectangle){0.0f, 0.0f, (float)window_width, ui_height}, "Game Options")) {
+    if (GuiButton((Rectangle){0.0f, 0.0f, (float)render_width * 0.5f, ui_height}, "Game Options")) {
       show_game_dialog = true;
       game_running = false;
       timer_running = false;
     }
 
+    static bool show_display_dialog = false;
+    static bool previous_timer_running = false;
+    if (GuiButton((Rectangle){(float)render_width * 0.5f, 0.0f, (float)render_width * 0.5f, ui_height}, "Display Options")) {
+      show_display_dialog = true;
+      game_running = false;
+      previous_timer_running = timer_running;
+      timer_running = false;
+    }
+
     // Middle of the board
     if (show_game_dialog) {
-      Rectangle dialog_bounds = {(float)window_width / 2.0f - 90.0f, 10.0f * (float)board_height, 180.0f, 180.0f};
+      game_running = false; // Make sure can't start game with dialogue open
+
+      Rectangle dialog_bounds = {(float)render_width * 0.5f - 90.0f, 10.0f * (float)board_height, 180.0f, 180.0f};
       const int result = GuiWindowBox(dialog_bounds, "Game Options");
 
       Rectangle inner_bounds = {dialog_bounds.x + 10.0f, dialog_bounds.y + 28.0f, 160.0f, 142.0f};
@@ -504,19 +549,19 @@ int main(void) {
         GuiSetStyle(LABEL, TEXT_ALIGNMENT, TEXT_ALIGN_LEFT);
       } else {
         static bool width_edit_mode = false;
-        if (GuiValueBox((Rectangle){inner_bounds.x + 80.0f, inner_bounds.y + 45.0f, inner_bounds.width / 2.0f, ui_height}, NULL,
+        if (GuiValueBox((Rectangle){inner_bounds.x + 80.0f, inner_bounds.y + 45.0f, inner_bounds.width * 0.5f, ui_height}, NULL,
                         &custom_board_width, 1, 1000, width_edit_mode)) {
           width_edit_mode = !width_edit_mode;
         }
 
         static bool height_edit_mode = false;
-        if (GuiValueBox((Rectangle){inner_bounds.x + 80.0f, inner_bounds.y + 70.0f, inner_bounds.width / 2.0f, ui_height}, NULL,
+        if (GuiValueBox((Rectangle){inner_bounds.x + 80.0f, inner_bounds.y + 70.0f, inner_bounds.width * 0.5f, ui_height}, NULL,
                         &custom_board_height, 1, 1000, height_edit_mode)) {
           height_edit_mode = !height_edit_mode;
         }
 
         static bool mines_edit_mode = false;
-        if (GuiValueBox((Rectangle){inner_bounds.x + 80.0f, inner_bounds.y + 95.0f, inner_bounds.width / 2.0f, ui_height}, NULL,
+        if (GuiValueBox((Rectangle){inner_bounds.x + 80.0f, inner_bounds.y + 95.0f, inner_bounds.width * 0.5f, ui_height}, NULL,
                         &custom_mines, 1, 1000, mines_edit_mode)) {
           mines_edit_mode = !mines_edit_mode;
         }
@@ -527,10 +572,10 @@ int main(void) {
         game_running = true;
         timer_running = false;
         if (active != 3) {
-          resizeBoard(&board, difficulty_nums[active * 3 + 0], difficulty_nums[active * 3 + 1]);
+          resizeBoard(&board, difficulty_nums[active * 3 + 0], difficulty_nums[active * 3 + 1], &render_target);
           num_mines = difficulty_nums[active * 3 + 2];
         } else {
-          resizeBoard(&board, custom_board_width, custom_board_height);
+          resizeBoard(&board, custom_board_width, custom_board_height, &render_target);
           if (custom_mines > board_width * board_height - 1) {
             custom_mines = board_width * board_height - 1;
           }
@@ -551,10 +596,55 @@ int main(void) {
       }
     }
 
+    if (show_display_dialog) {
+      game_running = false; // Make sure can't start game with dialogue open
+
+      Rectangle dialog_bounds = {(float)render_width * 0.5f - 90.0f, 10.0f * (float)board_height, 180.0f, 180.0f};
+      const int result = GuiWindowBox(dialog_bounds, "Display Options");
+
+      Rectangle inner_bounds = {dialog_bounds.x + 10.0f, dialog_bounds.y + 28.0f, 160.0f, 142.0f};
+      GuiLabel((Rectangle){inner_bounds.x, inner_bounds.y, inner_bounds.width, ui_height}, "Display Scale:");
+      static int active = 0;
+      static bool dropdown_active = false;
+
+      if (GuiButton((Rectangle){inner_bounds.x, dialog_bounds.y + 150.0f, inner_bounds.width, ui_height}, "Apply")) {
+        show_display_dialog = false;
+        game_running = true;
+        timer_running = previous_timer_running;
+        if (active == 0) {
+          scale = 1.0f;
+        } else {
+          scale = 2.0f;
+        }
+        SetWindowSize(render_width * scale, render_height * scale);
+      }
+
+      if (GuiDropdownBox((Rectangle){inner_bounds.x, inner_bounds.y + 20.0f, inner_bounds.width, ui_height},
+                         "1;2", &active, dropdown_active)) {
+        dropdown_active = !dropdown_active;
+      }
+
+      if (result) {
+        show_display_dialog = false;
+        game_running = true;
+        timer_running = previous_timer_running;
+      }
+    }
+
+    // EndDrawing();
+    EndTextureMode();
+
+    BeginDrawing();
+
+    DrawTexturePro(render_target.texture, (Rectangle){0.0f, 0.0f, (float)render_width, (float)-render_height},
+                   (Rectangle){0.0f, 0.0f, (float)render_width * scale, (float)render_height * scale}, (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+    
     EndDrawing();
   }
 
   UnloadTexture(texture_atlas);
+
+  UnloadRenderTexture(render_target);
 
   CloseWindow();
 
